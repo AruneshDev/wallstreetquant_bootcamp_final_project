@@ -1,0 +1,67 @@
+# ── Virtual Environment ──
+.venv/
+venv/
+env/
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Jupyter ──
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ── Data files (too large for GitHub) ──
+data/
+*.parquet
+*.csv
+*.pkl
+*.h5
+*.hdf5
+
+# ── Model weights ──
+models/
+*.pt
+*.pth
+*.ckpt
+*.bin
+
+# ── Results / Charts ──
+results/
+charts/
+
+# ── Environment / Secrets ──
+.env
+.env.*
+*.key
+
+# ── VS Code ──
+.vscode/
+*.code-workspace
+
+# ── macOS ──
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# ── Logs ──
+*.log
+logs/
+
+# ── pytest / coverage ──
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── mypy ──
+.mypy_cache/

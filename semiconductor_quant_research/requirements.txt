@@ -1,0 +1,17 @@
+yfinance
+openbb
+pandas
+numpy
+pyarrow
+plotly
+kaleido==0.2.1
+streamlit
+scipy
+statsmodels
+scikit-learn
+torch
+torch-geometric
+python-dotenv
+tqdm
+ipykernel
+jupyter
