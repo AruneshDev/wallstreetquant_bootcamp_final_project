@@ -7,7 +7,6 @@ import io, contextlib, sys
 from pathlib import Path
 from plotly.subplots import make_subplots
 
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 st.set_page_config(
@@ -17,7 +16,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-
 # ══════════════════════════════════════════════════════════════════
 # DATA LOADING
 # ══════════════════════════════════════════════════════════════════
@@ -26,7 +24,7 @@ st.set_page_config(
 def load_all():
     from src.data_loader import load
     from src.backtest import (run_cs_momentum, run_pairs_trade,
-                               annual_analysis, monthly_returns_heatmap)
+                              annual_analysis, monthly_returns_heatmap)
 
     SEMI = ['NVDA','AMD','AVGO','TSM','QCOM','AMAT',
             'LRCX','MU','KLAC','TXN','ASML','MRVL']
@@ -41,7 +39,7 @@ def load_all():
     cs_port    = silent(run_cs_momentum, ret, SEMI,
                         mom_win=45, label="CS Momentum (45d)")
     pairs_port = silent(run_pairs_trade, ret, close,
-                    'AMAT', 'LRCX', win=120)   
+                        'AMAT', 'LRCX', win=120)
 
     rob_df = pd.read_csv("results/cs_momentum_robustness.csv")
     ann_cs = pd.read_csv("results/cs_momentum_annual.csv",  index_col=0)
@@ -52,7 +50,6 @@ def load_all():
     return (close, volume, ret, SEMI,
             cs_port, pairs_port,
             rob_df, ann_cs, mon_cs, ann_p, mon_p)
-
 
 @st.cache_data
 def load_ml_results():
@@ -72,22 +69,35 @@ def load_ml_results():
                                 index_col=0),
     }
 
-
 @st.cache_data
 def load_alpha_results():
     return {
         'decomp':    pd.read_csv("results/alpha_decomposition.csv",
-                                  index_col=0),
+                                 index_col=0),
         'corr':      pd.read_csv("results/strategy_correlation.csv",
-                                  index_col=0),
+                                 index_col=0),
         'cs_roll':   pd.read_csv("results/cs_rolling_alpha.csv",
+                                 index_col=0,
+                                 parse_dates=True)['alpha_ann'],
+        'pairs_roll': pd.read_csv("results/pairs_rolling_alpha.csv",
                                   index_col=0,
                                   parse_dates=True)['alpha_ann'],
-        'pairs_roll': pd.read_csv("results/pairs_rolling_alpha.csv",
-                                   index_col=0,
-                                   parse_dates=True)['alpha_ann'],
     }
 
+@st.cache_data
+def load_industrial_results():
+    return {
+        'sector_corr':   pd.read_csv("results/sector_correlation.csv",
+                                     index_col=0),
+        'semi_beta':     pd.read_csv("results/semi_beta_to_sectors.csv",
+                                     index_col=0),
+        'semi_shock':    pd.read_csv("results/semi_shock_impact.csv",
+                                     index_col=0),
+        'rolling_dom':   pd.read_csv("results/rolling_semi_dominance.csv",
+                                     index_col=0, parse_dates=True),
+        'semi_spy_risk': pd.read_csv("results/semi_spy_vol_contribution.csv",
+                                     index_col=0),
+    }
 
 (close, volume, ret, SEMI,
  cs_port, pairs_port,
@@ -95,7 +105,7 @@ def load_alpha_results():
 
 ml     = load_ml_results()
 alpha  = load_alpha_results()
-
+indus  = load_industrial_results()
 
 # ══════════════════════════════════════════════════════════════════
 # SIDEBAR
@@ -113,6 +123,7 @@ page = st.sidebar.radio("Navigate", [
     "🔗 Pairs Trade",
     "🏆 Strategy Comparison",
     "📐 Alpha Attribution",
+    "🏛 Market Impact",
     "🤖 ML Signal Analysis",
 ])
 
@@ -128,10 +139,10 @@ st.sidebar.markdown(f"""
 **Models**: RF · GBM · Transformer · GNN
 """)
 
-
 # ══════════════════════════════════════════════════════════════════
 # SHARED HELPERS
 # ══════════════════════════════════════════════════════════════════
+
 def metric_row(port: pd.Series):
     r       = port.dropna()
     ar      = r.mean() * 252
@@ -153,14 +164,14 @@ def metric_row(port: pd.Series):
     c4.metric("Sortino",      f"{sortino:.3f}")
     c5.metric("Max Drawdown", f"{mdd*100:.2f}%")
     c6.metric("Total Return", f"{tr*100:.2f}%")
+
 def equity_fig(port: pd.Series, title: str) -> go.Figure:
     r   = port.dropna()
     cum = (1 + r).cumprod()
-    dd  = (cum / cum.cummax() - 1) * 100   # always ≤ 0
+    dd  = (cum / cum.cummax() - 1) * 100
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # Equity line — NO fill, clean line only
     fig.add_trace(
         go.Scatter(
             x=cum.index, y=cum.values,
@@ -168,7 +179,6 @@ def equity_fig(port: pd.Series, title: str) -> go.Figure:
             line=dict(width=2, color="#6366f1")),
         secondary_y=False)
 
-    # Drawdown — filled area below zero
     fig.add_trace(
         go.Scatter(
             x=dd.index, y=dd.values,
@@ -178,7 +188,6 @@ def equity_fig(port: pd.Series, title: str) -> go.Figure:
             line=dict(color="rgba(239, 68, 68, 0.8)", width=1)),
         secondary_y=True)
 
-    # Pin drawdown axis so it doesn't squash equity
     dd_floor = min(dd.min() * 1.3, -10)
     fig.update_yaxes(title_text="equity (×)",
                      secondary_y=False,
@@ -198,7 +207,6 @@ def equity_fig(port: pd.Series, title: str) -> go.Figure:
     fig.update_xaxes(title_text="date")
     return fig
 
-
 def annual_bar_fig(ann_df: pd.DataFrame, label: str) -> go.Figure:
     df     = ann_df.reset_index()
     colors = ["#22c55e" if v >= 0 else "#ef4444"
@@ -214,7 +222,6 @@ def annual_bar_fig(ann_df: pd.DataFrame, label: str) -> go.Figure:
     fig.update_yaxes(title_text="total return %")
     return fig
 
-
 def monthly_heatmap_fig(mon_df: pd.DataFrame, label: str) -> go.Figure:
     data = mon_df.copy()
     data.columns = [str(c) for c in data.columns]
@@ -229,9 +236,8 @@ def monthly_heatmap_fig(mon_df: pd.DataFrame, label: str) -> go.Figure:
     fig.update_yaxes(title_text="year")
     return fig
 
-
 def rolling_sharpe_fig(port: pd.Series,
-                        window: int, title: str) -> go.Figure:
+                       window: int, title: str) -> go.Figure:
     rs = (port.rolling(window).mean() /
           port.rolling(window).std()) * np.sqrt(252)
     fig = px.line(x=rs.index, y=rs.values,
@@ -244,13 +250,11 @@ def rolling_sharpe_fig(port: pd.Series,
     fig.update_yaxes(title_text="rolling sharpe")
     return fig
 
-
 def icir(s: pd.Series) -> float:
     return s.mean() / s.std() if s.std() > 0 else np.nan
 
-
 # ══════════════════════════════════════════════════════════════════
-# PAGE: OVERVIEW
+# PAGES
 # ══════════════════════════════════════════════════════════════════
 
 if page == "🏠 Overview":
@@ -317,11 +321,6 @@ if page == "🏠 Overview":
             equity_fig(pairs_port, "Pairs trade equity curve"),
             use_container_width=True)
 
-
-# ══════════════════════════════════════════════════════════════════
-# PAGE: EDA
-# ══════════════════════════════════════════════════════════════════
-
 elif page == "📊 EDA & Correlations":
     st.title("Exploratory Data Analysis")
 
@@ -386,11 +385,6 @@ elif page == "📊 EDA & Correlations":
             fig.update_yaxes(title_text="ann. vol %")
             st.plotly_chart(fig, use_container_width=True)
 
-
-# ══════════════════════════════════════════════════════════════════
-# PAGE: LEAD-LAG
-# ══════════════════════════════════════════════════════════════════
-
 elif page == "🔍 Lead-Lag Study":
     from scipy.stats import pearsonr
     st.title("Lead-Lag Study")
@@ -444,18 +438,12 @@ elif page == "🔍 Lead-Lag Study":
     lift = best["corr"] - c0
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Same-day corr",
-              f"{c0:.4f}")
+    m1.metric("Same-day corr", f"{c0:.4f}")
     m2.metric(f"Best lag corr (lag={int(best['lag'])}d)",
               f"{best['corr']:.4f}")
     m3.metric("Lift", f"{lift:.4f}",
               delta=f"{lift:.4f}",
               delta_color="normal" if lift > 0 else "inverse")
-
-
-# ══════════════════════════════════════════════════════════════════
-# PAGE: CS MOMENTUM
-# ══════════════════════════════════════════════════════════════════
 
 elif page == "📈 CS Momentum":
     st.title("Cross-Sectional Momentum")
@@ -500,11 +488,6 @@ elif page == "📈 CS Momentum":
     with tab4:
         st.plotly_chart(monthly_heatmap_fig(mon_cs, "CS Momentum (45d)"),
                         use_container_width=True)
-
-
-# ══════════════════════════════════════════════════════════════════
-# PAGE: PAIRS TRADE
-# ══════════════════════════════════════════════════════════════════
 
 elif page == "🔗 Pairs Trade":
     st.title("AMAT / LRCX  Pairs Trade")
@@ -559,11 +542,6 @@ elif page == "🔗 Pairs Trade":
     with tab4:
         st.plotly_chart(monthly_heatmap_fig(mon_p, "AMAT/LRCX Pairs"),
                         use_container_width=True)
-
-
-# ══════════════════════════════════════════════════════════════════
-# PAGE: STRATEGY COMPARISON
-# ══════════════════════════════════════════════════════════════════
 
 elif page == "🏆 Strategy Comparison":
     st.title("Strategy Comparison")
@@ -623,11 +601,6 @@ elif page == "🏆 Strategy Comparison":
         equity_fig(combined, "Combined 50/50 equity curve"),
         use_container_width=True)
 
-
-# ══════════════════════════════════════════════════════════════════
-# PAGE: ALPHA ATTRIBUTION
-# ══════════════════════════════════════════════════════════════════
-
 elif page == "📐 Alpha Attribution":
     st.title("Alpha Attribution")
     st.caption(
@@ -639,7 +612,6 @@ elif page == "📐 Alpha Attribution":
     cs_roll   = alpha["cs_roll"]
     p_roll    = alpha["pairs_roll"]
 
-    # ── Key metric callouts ──
     try:
         cs_soxx = decomp.loc[decomp.index.str.contains("CS Momentum.*SOXX")]
         p_soxx  = decomp.loc[decomp.index.str.contains("Pairs.*SOXX")]
@@ -741,10 +713,130 @@ elif page == "📐 Alpha Attribution":
         fig.update_yaxes(title_text="alpha % / yr")
         st.plotly_chart(fig, use_container_width=True)
 
+elif page == "🏛 Market Impact":
+    st.title("Semiconductors as a Macro Factor")
+    st.caption("How semiconductor moves propagate into sectors and indices.")
 
-# ══════════════════════════════════════════════════════════════════
-# PAGE: ML SIGNAL ANALYSIS
-# ══════════════════════════════════════════════════════════════════
+    sector_corr   = indus["sector_corr"]
+    semi_beta     = indus["semi_beta"]
+    semi_shock    = indus["semi_shock"]
+    rolling_dom   = indus["rolling_dom"]
+    semi_spy_risk = indus["semi_spy_risk"]
+
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "Sector Correlation",
+        "Semi → Sector Beta",
+        "Shock Days",
+        "SPY Risk Attribution",
+    ])
+
+    with tab1:
+        st.subheader("Sector correlation matrix (2020–2026)")
+        fig = px.imshow(
+            sector_corr,
+            text_auto=".3f",
+            color_continuous_scale="RdBu_r",
+            zmin=-1, zmax=1,
+            title="Daily correlation between sectors and indices",
+            template="plotly_dark")
+        fig.update_xaxes(title_text="")
+        fig.update_yaxes(title_text="")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.info(
+            "SOXX has corr ≈ 0.91 with Technology, 0.89 with Nasdaq-100, "
+            "and 0.83 with the S&P 500 — semiconductors effectively act as a "
+            "macro factor, not just a sector story."
+        )
+
+    with tab2:
+        st.subheader("Semiconductor beta into each sector (SOXX as driver)")
+        st.dataframe(semi_beta.round(3), use_container_width=True)
+
+        dfb = semi_beta.sort_values("beta_semi", ascending=False)
+        fig = go.Figure(go.Bar(
+            x=dfb.index,
+            y=dfb["beta_semi"],
+            marker_color="#6366f1",
+            text=[f"{v:.3f}" for v in dfb["beta_semi"]],
+            textposition="outside",
+        ))
+        fig.add_hline(y=0, line_dash="dash",
+                      line_color="white", opacity=0.4)
+        fig.update_layout(
+            title="β (sector return) vs SOXX daily return",
+            template="plotly_dark",
+            showlegend=False)
+        fig.update_xaxes(title_text="sector")
+        fig.update_yaxes(title_text="beta to SOXX")
+        st.plotly_chart(fig, use_container_width=True)
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("SOXX → Technology β",
+                  f"{semi_beta.loc['Technology','beta_semi']:.3f}")
+        c2.metric("SOXX → Nasdaq-100 β",
+                  f"{semi_beta.loc['Nasdaq-100','beta_semi']:.3f}")
+        c3.metric("SOXX → S&P 500 β",
+                  f"{semi_beta.loc['S&P 500','beta_semi']:.3f}")
+
+        st.caption(
+            "Tech and QQQ have β≈0.6–0.7 to SOXX with R²>0.8; about 70% of "
+            "SPY’s daily variance is explained by semiconductor moves."
+        )
+
+    with tab3:
+        st.subheader("Semi shock days — ±2σ SOXX moves")
+        st.dataframe(semi_shock.round(3), use_container_width=True)
+
+        fig = go.Figure()
+        for col, color in [("SPY_mean%", "#22c55e"),
+                           ("QQQ_mean%", "#6366f1"),
+                           ("SOXX_mean%", "#f97316")]:
+            fig.add_trace(go.Bar(
+                x=semi_shock.index,
+                y=semi_shock[col],
+                name=col.replace("_mean%",""),
+            ))
+        fig.update_layout(
+            barmode="group",
+            title="Average moves on SOXX ±2σ days",
+            template="plotly_dark")
+        fig.update_xaxes(title_text="event")
+        fig.update_yaxes(title_text="average return %")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.info(
+            "On SOXX ±2σ days (~±6.5%), SPY moves about ±3.3% and QQQ about "
+            "±4.0%. Semiconductor shocks are effectively market-level shocks."
+        )
+
+    with tab4:
+        st.subheader("Semi marginal risk contribution to SPY")
+        st.dataframe(semi_spy_risk.round(3), use_container_width=True)
+
+        dfr = semi_spy_risk.sort_values("risk_contribution%", ascending=False)
+        fig = go.Figure(go.Bar(
+            x=dfr.index,
+            y=dfr["risk_contribution%"],
+            marker_color="#22c55e",
+            text=[f"{v:.2f}%" for v in dfr["risk_contribution%"]],
+            textposition="outside",
+        ))
+        fig.update_layout(
+            title="Euler marginal risk contribution (w × β) to SPY",
+            template="plotly_dark",
+            showlegend=False)
+        fig.update_xaxes(title_text="ticker")
+        fig.update_yaxes(title_text="risk contribution to SPY (%)")
+        st.plotly_chart(fig, use_container_width=True)
+
+        total = dfr["risk_contribution%"].sum()
+        nvda  = dfr.loc["NVDA","risk_contribution%"]
+        st.success(
+            f"NVDA alone contributes about {nvda:.1f}% of SPY’s risk; "
+            f"the 12-name semiconductor basket contributes ≈ {total:.1f}% "
+            "despite representing a smaller share of index market cap."
+        )
 
 elif page == "🤖 ML Signal Analysis":
     st.title("ML Signal Analysis")

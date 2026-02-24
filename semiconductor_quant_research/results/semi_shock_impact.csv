@@ -1,0 +1,3 @@
+event,n_days,SPY_mean%,QQQ_mean%,SOXX_mean%
+SOXX up >2σ,34,3.21,4.063,6.683
+SOXX down >2σ,40,-3.428,-4.051,-6.359
