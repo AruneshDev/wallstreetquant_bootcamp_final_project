@@ -1,4 +1,3 @@
-````markdown
 # Semiconductor Alpha Research
 
 **Point72 Investor Analyst Competition — Arunesh Lal | Feb 2026**
