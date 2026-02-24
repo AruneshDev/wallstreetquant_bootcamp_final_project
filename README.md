@@ -67,11 +67,11 @@ After falsifying lead–lag, the project pivots to **cross-sectional momentum** 
 **Regime dependence (what actually happens in the tape)**
 - The CS momentum edge is **strong in persistent trend regimes** (e.g., semiconductor “beta-on” / narrative-driven leadership).
 - The edge degrades during **choppy mean-reversion / rotation regimes** where winners mean-revert and leadership flips.
-- This shows up clearly year-by-year: strong positive Sharpe in trend years and negative Sharpe in rotation years (see §3.1).
+- This shows up clearly year-by-year: strong positive Sharpe in trend years and negative Sharpe in rotation years (see section 3.1).
 
 Practical interpretation:
 - CS momentum should be treated as a **conditional allocation strategy** (exposure gating), not a constant-leverage “set and forget” signal.
-- A regime overlay (rolling Sharpe / volatility state / trend filter) is a natural next step (see §10).
+- A regime overlay (rolling Sharpe / volatility state / trend filter) is a natural next step (see section 10).
 
 ---
 
