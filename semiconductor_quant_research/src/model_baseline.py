@@ -13,7 +13,7 @@ FEATURE_COLS = [
     'vol_5d', 'vol_20d', 'reversal_1d', 'vol_ratio',
     'dist_52w_high', 'cs_rank_mom10'
 ]
-TARGET_COL = 'fwd_ret_1d'
+TARGET_COL = 'fwd_ret_5d'
 
 
 # ══════════════════════════════════════════════════════════════════

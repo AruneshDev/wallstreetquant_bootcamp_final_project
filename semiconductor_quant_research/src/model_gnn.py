@@ -14,7 +14,7 @@ FEATURE_COLS = [
     'vol_5d', 'vol_20d', 'reversal_1d', 'vol_ratio',
     'dist_52w_high', 'cs_rank_mom10'
 ]
-TARGET_COL  = 'fwd_ret_1d'
+TARGET_COL  = 'fwd_ret_5d'
 SEMI        = ['NVDA','AMD','AVGO','TSM','QCOM','AMAT',
                'LRCX','MU','KLAC','TXN','ASML','MRVL']
 DEVICE      = torch.device('mps' if torch.backends.mps.is_available()

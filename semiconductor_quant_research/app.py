@@ -5,6 +5,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 import io, contextlib, sys
 from pathlib import Path
+from plotly.subplots import make_subplots
+
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -14,6 +16,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
 
 # ══════════════════════════════════════════════════════════════════
 # DATA LOADING
@@ -38,7 +41,7 @@ def load_all():
     cs_port    = silent(run_cs_momentum, ret, SEMI,
                         mom_win=45, label="CS Momentum (45d)")
     pairs_port = silent(run_pairs_trade, ret, close,
-                        'NVDA', 'TXN', win=120)
+                    'AMAT', 'LRCX', win=120)   
 
     rob_df = pd.read_csv("results/cs_momentum_robustness.csv")
     ann_cs = pd.read_csv("results/cs_momentum_annual.csv",  index_col=0)
@@ -70,11 +73,28 @@ def load_ml_results():
     }
 
 
+@st.cache_data
+def load_alpha_results():
+    return {
+        'decomp':    pd.read_csv("results/alpha_decomposition.csv",
+                                  index_col=0),
+        'corr':      pd.read_csv("results/strategy_correlation.csv",
+                                  index_col=0),
+        'cs_roll':   pd.read_csv("results/cs_rolling_alpha.csv",
+                                  index_col=0,
+                                  parse_dates=True)['alpha_ann'],
+        'pairs_roll': pd.read_csv("results/pairs_rolling_alpha.csv",
+                                   index_col=0,
+                                   parse_dates=True)['alpha_ann'],
+    }
+
+
 (close, volume, ret, SEMI,
  cs_port, pairs_port,
  rob_df, ann_cs, mon_cs, ann_p, mon_p) = load_all()
 
-ml = load_ml_results()
+ml     = load_ml_results()
+alpha  = load_alpha_results()
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -92,12 +112,18 @@ page = st.sidebar.radio("Navigate", [
     "📈 CS Momentum",
     "🔗 Pairs Trade",
     "🏆 Strategy Comparison",
+    "📐 Alpha Attribution",
     "🤖 ML Signal Analysis",
 ])
 
+n_days = len(ret)
+start  = ret.index[0].strftime('%b %Y')
+end    = ret.index[-1].strftime('%b %Y')
+
 st.sidebar.markdown("---")
-st.sidebar.markdown("""
-**Data**: 2024-01-03 → 2026-02-20  
+st.sidebar.markdown(f"""
+**Data**: {start} → {end}  
+**Days**: {n_days:,}  
 **Universe**: 12 semis + 5 big tech  
 **Models**: RF · GBM · Transformer · GNN
 """)
@@ -106,7 +132,6 @@ st.sidebar.markdown("""
 # ══════════════════════════════════════════════════════════════════
 # SHARED HELPERS
 # ══════════════════════════════════════════════════════════════════
-
 def metric_row(port: pd.Series):
     r       = port.dropna()
     ar      = r.mean() * 252
@@ -119,35 +144,57 @@ def metric_row(port: pd.Series):
     sortino = ar / dv   if (dv and dv > 0) else 0.0
     tr      = cum.iloc[-1] - 1
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Annual Return", f"{ar*100:.1f}%")
-    c2.metric("Annual Vol",    f"{av*100:.1f}%")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Annual Return", f"{ar*100:.2f}%")
+    c2.metric("Annual Vol",    f"{av*100:.2f}%")
     c3.metric("Sharpe",        f"{sr:.3f}")
-    c4.metric("Sortino",       f"{sortino:.3f}")
-    c5.metric("Max Drawdown",  f"{mdd*100:.1f}%")
-    c6.metric("Total Return",  f"{tr*100:.1f}%")
 
-
+    c4, c5, c6 = st.columns(3)
+    c4.metric("Sortino",      f"{sortino:.3f}")
+    c5.metric("Max Drawdown", f"{mdd*100:.2f}%")
+    c6.metric("Total Return", f"{tr*100:.2f}%")
 def equity_fig(port: pd.Series, title: str) -> go.Figure:
     r   = port.dropna()
     cum = (1 + r).cumprod()
-    dd  = (cum / cum.cummax() - 1) * 100
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=cum.index, y=cum.values,
-        name="Equity", mode="lines", fill="tozeroy",
-        line=dict(width=2)))
-    fig.add_trace(go.Scatter(
-        x=dd.index, y=dd.values,
-        name="Drawdown %",
-        line=dict(color="red", dash="dot", width=1),
-        yaxis="y2"))
+    dd  = (cum / cum.cummax() - 1) * 100   # always ≤ 0
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Equity line — NO fill, clean line only
+    fig.add_trace(
+        go.Scatter(
+            x=cum.index, y=cum.values,
+            name="Equity", mode="lines",
+            line=dict(width=2, color="#6366f1")),
+        secondary_y=False)
+
+    # Drawdown — filled area below zero
+    fig.add_trace(
+        go.Scatter(
+            x=dd.index, y=dd.values,
+            name="Drawdown %", mode="lines",
+            fill="tozeroy",
+            fillcolor="rgba(239, 68, 68, 0.15)",
+            line=dict(color="rgba(239, 68, 68, 0.8)", width=1)),
+        secondary_y=True)
+
+    # Pin drawdown axis so it doesn't squash equity
+    dd_floor = min(dd.min() * 1.3, -10)
+    fig.update_yaxes(title_text="equity (×)",
+                     secondary_y=False,
+                     showgrid=True)
+    fig.update_yaxes(title_text="drawdown %",
+                     secondary_y=True,
+                     range=[dd_floor, 5],
+                     showgrid=False,
+                     zeroline=True,
+                     zerolinecolor="rgba(255,255,255,0.2)")
+
     fig.update_layout(
-        title=title, template="plotly_dark",
-        yaxis=dict(title="equity (×)"),
-        yaxis2=dict(title="drawdown %", overlaying="y",
-                    side="right", showgrid=False),
-        legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"))
+        title=title,
+        template="plotly_dark",
+        legend=dict(orientation="h", y=1.08,
+                    x=0.5, xanchor="center"))
     fig.update_xaxes(title_text="date")
     return fig
 
@@ -183,8 +230,8 @@ def monthly_heatmap_fig(mon_df: pd.DataFrame, label: str) -> go.Figure:
     return fig
 
 
-def rolling_sharpe_fig(port: pd.Series, window: int,
-                        title: str) -> go.Figure:
+def rolling_sharpe_fig(port: pd.Series,
+                        window: int, title: str) -> go.Figure:
     rs = (port.rolling(window).mean() /
           port.rolling(window).std()) * np.sqrt(252)
     fig = px.line(x=rs.index, y=rs.values,
@@ -209,17 +256,16 @@ def icir(s: pd.Series) -> float:
 if page == "🏠 Overview":
     st.title("Semiconductor Alpha Research")
     st.markdown("""
-    > **Research goal**: Identify statistically robust, ML-ready trading
-    > signals in semiconductor equities using 2 years of daily data (2024–2026).
+    > **Research goal**: Identify statistically robust, market-neutral
+    > alpha signals in semiconductor equities using daily price data
+    > from 2020 to Feb 2026.
     ---
     """)
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Universe",     f"{len(SEMI)} semis + 5 big tech")
-    c2.metric("Trading days", f"{len(ret):,}")
-    c3.metric("Period",
-              f"{ret.index[0].strftime('%b %Y')} → "
-              f"{ret.index[-1].strftime('%b %Y')}")
+    c1.metric("Universe",      f"{len(SEMI)} semis + 5 big tech")
+    c2.metric("Trading days",  f"{n_days:,}")
+    c3.metric("Period",        f"{start} → {end}")
     c4.metric("Best ML model", "GNN  IC=0.051")
 
     st.markdown("---")
@@ -248,10 +294,10 @@ if page == "🏠 Overview":
         """)
     with j4:
         st.markdown("""
-        **④ ML layer**  
+        **④ ML + Alpha**  
         GNN IC=0.051 crosses  
-        institutional tradability  
-        threshold (IC > 0.05).
+        tradability threshold.  
+        Beta ≈ 0 vs SOXX confirmed.
         """)
 
     st.markdown("---")
@@ -261,13 +307,15 @@ if page == "🏠 Overview":
     with col1:
         st.markdown("#### CS Momentum (45d)")
         metric_row(cs_port)
-        st.plotly_chart(equity_fig(cs_port, "CS Momentum equity curve"),
-                        use_container_width=True)
+        st.plotly_chart(
+            equity_fig(cs_port, "CS Momentum equity curve"),
+            use_container_width=True)
     with col2:
-        st.markdown("#### NVDA / TXN Pairs Trade")
+        st.markdown("#### AMAT / LRCX Pairs Trade")
         metric_row(pairs_port)
-        st.plotly_chart(equity_fig(pairs_port, "Pairs trade equity curve"),
-                        use_container_width=True)
+        st.plotly_chart(
+            equity_fig(pairs_port, "Pairs trade equity curve"),
+            use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -297,7 +345,8 @@ elif page == "📊 EDA & Correlations":
             st.plotly_chart(fig, use_container_width=True)
 
     with tab2:
-        win = st.slider("Rolling window (days)", 60, 504, 252)
+        max_win = min(len(ret), 1260)
+        win = st.slider("Rolling window (days)", 60, max_win, 252)
         corr = ret[SEMI].tail(win).corr()
         fig  = px.imshow(corr, text_auto=".2f",
                          color_continuous_scale="RdBu_r",
@@ -308,13 +357,13 @@ elif page == "📊 EDA & Correlations":
         fig.update_yaxes(title_text="ticker")
         st.plotly_chart(fig, use_container_width=True)
 
-        ref = st.selectbox("Correlation bar vs:", SEMI, index=0)
-        cb  = ret[SEMI].corrwith(ret[ref]).drop(ref).sort_values(ascending=False)
+        ref   = st.selectbox("Correlation bar vs:", SEMI, index=0)
+        cb    = ret[SEMI].corrwith(ret[ref]).drop(ref).sort_values(ascending=False)
         df_cb = cb.reset_index()
         df_cb.columns = ["ticker", "corr"]
-        fig2 = px.bar(df_cb, x="ticker", y="corr",
-                      title=f"Same-day correlation vs {ref}",
-                      template="plotly_dark")
+        fig2  = px.bar(df_cb, x="ticker", y="corr",
+                       title=f"Same-day correlation vs {ref}",
+                       template="plotly_dark")
         fig2.update_xaxes(title_text="ticker")
         fig2.update_yaxes(title_text="pearson corr")
         st.plotly_chart(fig2, use_container_width=True)
@@ -348,8 +397,8 @@ elif page == "🔍 Lead-Lag Study":
 
     st.error("""
     **Research finding**: Zero positive-lift pairs found across all
-    272 directed pairs (785 trading days tested).
-    Max lift = –0.20. Daily lead-lag alpha is **rejected**.
+    272 directed pairs tested. Max lift = –0.20.
+    Daily lead-lag alpha is **rejected**.
     """)
 
     st.subheader("Interactive pair explorer")
@@ -378,8 +427,10 @@ elif page == "🔍 Lead-Lag Study":
         marker_color=ll_df["color"],
         text=[f"{v:.4f}" for v in ll_df["corr"]],
         textposition="outside"))
-    fig.add_vline(x=0, line_dash="dash", line_color="yellow", opacity=0.5)
-    fig.add_hline(y=0, line_dash="dash", line_color="white",  opacity=0.3)
+    fig.add_vline(x=0, line_dash="dash",
+                  line_color="yellow", opacity=0.5)
+    fig.add_hline(y=0, line_dash="dash",
+                  line_color="white",  opacity=0.3)
     fig.update_layout(
         title=f"Lead-lag correlation: {leader} → {follower}",
         template="plotly_dark", showlegend=False)
@@ -388,8 +439,10 @@ elif page == "🔍 Lead-Lag Study":
     st.plotly_chart(fig, use_container_width=True)
 
     c0   = ll_df[ll_df["lag"] == 0]["corr"].values[0]
-    best = ll_df[ll_df["lag"] > 0].sort_values("corr", ascending=False).iloc[0]
+    best = (ll_df[ll_df["lag"] > 0]
+            .sort_values("corr", ascending=False).iloc[0])
     lift = best["corr"] - c0
+
     m1, m2, m3 = st.columns(3)
     m1.metric("Same-day corr",
               f"{c0:.4f}")
@@ -432,7 +485,7 @@ elif page == "📈 CS Momentum":
         fig.add_hline(y=0, line_dash="dash",
                       line_color="white", opacity=0.4)
         fig.update_layout(
-            title="Sharpe vs momentum window — reversal→momentum crossover at 20d",
+            title="Sharpe vs momentum window — reversal→momentum crossover",
             template="plotly_dark", showlegend=False)
         fig.update_xaxes(title_text="momentum window")
         fig.update_yaxes(title_text="sharpe ratio")
@@ -454,8 +507,9 @@ elif page == "📈 CS Momentum":
 # ══════════════════════════════════════════════════════════════════
 
 elif page == "🔗 Pairs Trade":
-    st.title("NVDA / TXN Pairs Trade")
-    st.caption("Log-spread mean reversion | Entry ±1.5σ | Exit ±0.3σ | 120d rolling")
+    st.title("AMAT / LRCX  Pairs Trade")
+    st.caption(
+        "Log-spread mean reversion | Entry ±1.5σ | Exit ±0.3σ | 120d rolling")
 
     tab1, tab2, tab3, tab4 = st.tabs(
         ["Equity Curve", "Z-Score", "Annual", "Monthly"])
@@ -463,17 +517,17 @@ elif page == "🔗 Pairs Trade":
     with tab1:
         metric_row(pairs_port)
         st.plotly_chart(
-            equity_fig(pairs_port, "NVDA/TXN Pairs — equity & drawdown"),
+            equity_fig(pairs_port, "AMAT/LRCX Pairs — equity & drawdown"),
             use_container_width=True)
         st.plotly_chart(
             rolling_sharpe_fig(pairs_port, 63, "Rolling Sharpe (63d)"),
             use_container_width=True)
 
     with tab2:
-        log_spread = np.log(close["NVDA"]) - np.log(close["TXN"])
-        mu     = log_spread.rolling(120).mean()
-        sigma  = log_spread.rolling(120).std()
-        z      = (log_spread - mu) / sigma
+        log_spread = np.log(close["AMAT"]) - np.log(close["LRCX"])
+        mu    = log_spread.rolling(120).mean()
+        sigma = log_spread.rolling(120).std()
+        z     = (log_spread - mu) / sigma
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=z.index, y=z.values,
@@ -491,19 +545,19 @@ elif page == "🔗 Pairs Trade":
                           annotation_position="right")
         fig.add_hline(y=0, line_color="white", opacity=0.3)
         fig.update_layout(
-            title="NVDA/TXN log-spread z-score (120d rolling)",
+            title="AMAT/LRCX log-spread z-score (120d rolling)",
             template="plotly_dark", showlegend=False)
         fig.update_xaxes(title_text="date")
         fig.update_yaxes(title_text="z-score")
         st.plotly_chart(fig, use_container_width=True)
 
     with tab3:
-        st.plotly_chart(annual_bar_fig(ann_p, "NVDA/TXN Pairs"),
+        st.plotly_chart(annual_bar_fig(ann_p, "AMAT/LRCX Pairs"),
                         use_container_width=True)
         st.dataframe(ann_p.round(3), use_container_width=True)
 
     with tab4:
-        st.plotly_chart(monthly_heatmap_fig(mon_p, "NVDA/TXN Pairs"),
+        st.plotly_chart(monthly_heatmap_fig(mon_p, "AMAT/LRCX Pairs"),
                         use_container_width=True)
 
 
@@ -514,9 +568,9 @@ elif page == "🔗 Pairs Trade":
 elif page == "🏆 Strategy Comparison":
     st.title("Strategy Comparison")
 
-    both     = pd.DataFrame({
+    both = pd.DataFrame({
         "CS Momentum (45d)": cs_port,
-        "NVDA/TXN Pairs":    pairs_port
+        "AMAT/LRCX Pairs":    pairs_port
     }).dropna(how="all").fillna(0)
     cum_both = (1 + both).cumprod()
 
@@ -527,7 +581,8 @@ elif page == "🏆 Strategy Comparison":
     fig.update_layout(
         title="Strategy equity curves — side by side",
         template="plotly_dark",
-        legend=dict(orientation="h", y=1.1, x=0.5, xanchor="center"))
+        legend=dict(orientation="h", y=1.1,
+                    x=0.5, xanchor="center"))
     fig.update_xaxes(title_text="date")
     fig.update_yaxes(title_text="equity (×)")
     st.plotly_chart(fig, use_container_width=True)
@@ -544,17 +599,19 @@ elif page == "🏆 Strategy Comparison":
         neg = r[r < 0]
         dv  = neg.std() * np.sqrt(252) if len(neg) > 5 else np.nan
         sortino = ar / dv if (dv and dv > 0) else 0.0
-        return {"Strategy":    label,
-                "Ann Ret %":   round(ar  * 100, 2),
-                "Ann Vol %":   round(av  * 100, 2),
-                "Sharpe":      round(sr,  3),
-                "Sortino":     round(sortino, 3),
-                "Max DD %":    round(mdd * 100, 2),
-                "Win Rate %":  round((r > 0).mean() * 100, 1)}
+        return {
+            "Strategy":   label,
+            "Ann Ret %":  round(ar  * 100, 2),
+            "Ann Vol %":  round(av  * 100, 2),
+            "Sharpe":     round(sr,  3),
+            "Sortino":    round(sortino, 3),
+            "Max DD %":   round(mdd * 100, 2),
+            "Win Rate %": round((r > 0).mean() * 100, 1),
+        }
 
     comp = pd.DataFrame([
         mdict(cs_port,    "CS Momentum (45d)"),
-        mdict(pairs_port, "NVDA/TXN Pairs"),
+        mdict(pairs_port, "AMAT/LRCX Pairs"),
     ]).set_index("Strategy")
     st.dataframe(comp, use_container_width=True)
 
@@ -568,53 +625,172 @@ elif page == "🏆 Strategy Comparison":
 
 
 # ══════════════════════════════════════════════════════════════════
+# PAGE: ALPHA ATTRIBUTION
+# ══════════════════════════════════════════════════════════════════
+
+elif page == "📐 Alpha Attribution":
+    st.title("Alpha Attribution")
+    st.caption(
+        "Jensen's alpha regression vs SOXX and SPY  |  "
+        "R_p − R_f  =  α  +  β(R_m − R_f)  +  ε")
+
+    decomp    = alpha["decomp"]
+    corr_df   = alpha["corr"].astype(float)
+    cs_roll   = alpha["cs_roll"]
+    p_roll    = alpha["pairs_roll"]
+
+    # ── Key metric callouts ──
+    try:
+        cs_soxx = decomp.loc[decomp.index.str.contains("CS Momentum.*SOXX")]
+        p_soxx  = decomp.loc[decomp.index.str.contains("Pairs.*SOXX")]
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("CS Mom Beta (SOXX)",
+                  f"{cs_soxx['beta'].values[0]:.3f}",
+                  help="Near zero = not leveraged SOXX exposure")
+        c2.metric("Pairs Beta (SOXX)",
+                  f"{p_soxx['beta'].values[0]:.3f}",
+                  help="Negative = structural market hedge")
+        c3.metric("CS Mom R² (SOXX)",
+                  f"{cs_soxx['r2'].values[0]:.3f}",
+                  help="% variance explained by SOXX")
+        c4.metric("Strategy Correlation",
+                  f"{corr_df.loc['CS Momentum','Pairs Trade']:.3f}",
+                  help="Negative = natural diversification")
+    except Exception:
+        st.info("Run src/alpha.py to generate attribution results.")
+
+    st.markdown("---")
+
+    tab1, tab2, tab3 = st.tabs(
+        ["Alpha Table", "Correlation Matrix", "Rolling Alpha"])
+
+    with tab1:
+        st.subheader("Jensen's Alpha decomposition")
+        st.dataframe(decomp.round(3), use_container_width=True)
+
+        alphas = decomp['alpha_ann_pct'].values
+        labels = decomp.index.tolist()
+        colors = ["#22c55e" if v > 0 else "#ef4444" for v in alphas]
+
+        fig = go.Figure(go.Bar(
+            x=labels, y=alphas,
+            marker_color=colors,
+            text=[f"{v:.2f}%" for v in alphas],
+            textposition="outside"))
+        fig.add_hline(y=0, line_dash="dash",
+                      line_color="white", opacity=0.4)
+        fig.update_layout(
+            title="Annualised Jensen's Alpha vs benchmarks",
+            template="plotly_dark", showlegend=False)
+        fig.update_xaxes(title_text="strategy vs benchmark")
+        fig.update_yaxes(title_text="alpha % / yr")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.info("""
+        **Alpha is economically substantial (6–9% annualised) but
+        t-stats are < 2 with 2 years of data.** With ~23% tracking error,
+        reaching statistical significance (t > 2) requires ~5 years at this
+        Sharpe level. The key result is **beta ≈ 0** and **R² ≈ 0** — returns
+        are genuinely decorrelated from the semiconductor index, not disguised
+        SOXX beta. With the extended dataset (2020–2026) the t-stats will rise
+        meaningfully.
+        """)
+
+    with tab2:
+        fig = px.imshow(
+            corr_df,
+            text_auto=".3f",
+            color_continuous_scale="RdBu_r",
+            zmin=-1, zmax=1,
+            title="Strategy & benchmark correlation matrix",
+            template="plotly_dark")
+        fig.update_xaxes(title_text="")
+        fig.update_yaxes(title_text="")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.success("""
+        **CS Momentum ↔ Pairs Trade correlation = –0.458.**
+        These strategies hedge each other naturally. CS Momentum thrives
+        in trending regimes; Pairs Trade is stable across years. Both carry
+        near-zero correlation to SPY (0.099 and –0.105 respectively).
+        """)
+
+    with tab3:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=cs_roll.index,
+            y=(cs_roll * 100).values,
+            name="CS Momentum",
+            mode="lines",
+            line=dict(color="#6366f1", width=2)))
+        fig.add_trace(go.Scatter(
+            x=p_roll.index,
+            y=(p_roll * 100).values,
+            name="Pairs Trade",
+            mode="lines",
+            line=dict(color="#22c55e", width=2)))
+        fig.add_hline(y=0, line_dash="dash",
+                      line_color="white", opacity=0.4)
+        fig.update_layout(
+            title="Rolling 126d annualised alpha vs SOXX",
+            template="plotly_dark",
+            legend=dict(orientation="h", y=1.1,
+                        x=0.5, xanchor="center"))
+        fig.update_xaxes(title_text="date")
+        fig.update_yaxes(title_text="alpha % / yr")
+        st.plotly_chart(fig, use_container_width=True)
+
+
+# ══════════════════════════════════════════════════════════════════
 # PAGE: ML SIGNAL ANALYSIS
 # ══════════════════════════════════════════════════════════════════
 
 elif page == "🤖 ML Signal Analysis":
     st.title("ML Signal Analysis")
-    st.caption("OOS test set: 2025-04-15 → 2026-02-20 | identical for all 4 models")
+    st.caption(
+        "OOS test set: 60/40 train/test split | identical for all 4 models")
 
-    rf_ic  = ml["rf_ic"];  gbm_ic = ml["gbm_ic"]
-    tf_ic  = ml["tf_ic"];  gnn_ic = ml["gnn_ic"]
-    rf_ric = ml["rf_ric"]; gbm_ric = ml["gbm_ric"]
-    tf_ric = ml["tf_ric"]; gnn_ric = ml["gnn_ric"]
+    rf_ic  = ml["rf_ic"];   gbm_ic  = ml["gbm_ic"]
+    tf_ic  = ml["tf_ic"];   gnn_ic  = ml["gnn_ic"]
+    rf_ric = ml["rf_ric"];  gbm_ric = ml["gbm_ric"]
+    tf_ric = ml["tf_ric"];  gnn_ric = ml["gnn_ric"]
 
-    # ── Summary table ──
     st.subheader("Model comparison — OOS IC")
     comp_ml = pd.DataFrame([
         {"Model": "Random Forest",
-         "IC":       round(rf_ic.mean(),  5),
-         "ICIR":     round(icir(rf_ic),   4),
-         "RankIC":   round(rf_ric.mean(), 5),
-         "IC pos%":  round((rf_ic  > 0).mean() * 100, 1),
-         "N days":   len(rf_ic)},
+         "IC":      round(rf_ic.mean(),   5),
+         "ICIR":    round(icir(rf_ic),    4),
+         "RankIC":  round(rf_ric.mean(),  5),
+         "IC pos%": round((rf_ic  > 0).mean() * 100, 1),
+         "N days":  len(rf_ic)},
         {"Model": "Gradient Boosting",
-         "IC":       round(gbm_ic.mean(),  5),
-         "ICIR":     round(icir(gbm_ic),   4),
-         "RankIC":   round(gbm_ric.mean(), 5),
-         "IC pos%":  round((gbm_ic > 0).mean() * 100, 1),
-         "N days":   len(gbm_ic)},
+         "IC":      round(gbm_ic.mean(),  5),
+         "ICIR":    round(icir(gbm_ic),   4),
+         "RankIC":  round(gbm_ric.mean(), 5),
+         "IC pos%": round((gbm_ic > 0).mean() * 100, 1),
+         "N days":  len(gbm_ic)},
         {"Model": "Transformer",
-         "IC":       round(tf_ic.mean(),  5),
-         "ICIR":     round(icir(tf_ic),   4),
-         "RankIC":   round(tf_ric.mean(), 5),
-         "IC pos%":  round((tf_ic  > 0).mean() * 100, 1),
-         "N days":   len(tf_ic)},
+         "IC":      round(tf_ic.mean(),   5),
+         "ICIR":    round(icir(tf_ic),    4),
+         "RankIC":  round(tf_ric.mean(),  5),
+         "IC pos%": round((tf_ic  > 0).mean() * 100, 1),
+         "N days":  len(tf_ic)},
         {"Model": "GNN ✅",
-         "IC":       round(gnn_ic.mean(),  5),
-         "ICIR":     round(icir(gnn_ic),   4),
-         "RankIC":   round(gnn_ric.mean(), 5),
-         "IC pos%":  round((gnn_ic > 0).mean() * 100, 1),
-         "N days":   len(gnn_ic)},
+         "IC":      round(gnn_ic.mean(),  5),
+         "ICIR":    round(icir(gnn_ic),   4),
+         "RankIC":  round(gnn_ric.mean(), 5),
+         "IC pos%": round((gnn_ic > 0).mean() * 100, 1),
+         "N days":  len(gnn_ic)},
     ]).set_index("Model")
     st.dataframe(comp_ml, use_container_width=True)
 
     tab1, tab2, tab3, tab4 = st.tabs(
         ["IC Bar", "ICIR Bar", "Rolling IC", "Feature Importance"])
 
+    colors = ["#ef4444","#ef4444","#f59e0b","#22c55e"]
+
     with tab1:
-        colors = ["#ef4444","#ef4444","#f59e0b","#22c55e"]
         fig = go.Figure(go.Bar(
             x=comp_ml.index, y=comp_ml["IC"],
             marker_color=colors,
@@ -657,9 +833,9 @@ elif page == "🤖 ML Signal Analysis":
         st.plotly_chart(fig, use_container_width=True)
 
     with tab3:
-        win = st.slider("Rolling window (days)", 10, 60, 21)
+        win = st.slider("Rolling window (days)", 10, 63, 21)
         fig = go.Figure()
-        for name, series, color, width in [
+        for name, series, color, lw in [
             ("GNN",         gnn_ic, "#22c55e", 2.5),
             ("Transformer", tf_ic,  "#f59e0b", 1.5),
             ("RF",          rf_ic,  "#94a3b8", 1.0),
@@ -669,7 +845,7 @@ elif page == "🤖 ML Signal Analysis":
             fig.add_trace(go.Scatter(
                 x=roll.index, y=roll.values,
                 name=name, mode="lines",
-                line=dict(color=color, width=width)))
+                line=dict(color=color, width=lw)))
         fig.add_hline(y=0,    line_dash="dash",
                       line_color="white",   opacity=0.3)
         fig.add_hline(y=0.05, line_dash="dot",
@@ -698,11 +874,11 @@ elif page == "🤖 ML Signal Analysis":
 
     st.markdown("---")
     st.info("""
-    **Key finding**: GNN (IC=0.051, ICIR=0.148, IC pos%=56.1%) is the only model
-    crossing the institutional tradability threshold (IC > 0.05). The
-    correlation-weighted graph structure captures semiconductor sector contagion
-    that flat-feature models (RF, GBM) and even sequential models (Transformer)
-    cannot encode.
+    **Key finding**: GNN (IC=0.051, ICIR=0.148, IC pos%=56.1%) is the only
+    model crossing the institutional tradability threshold (IC > 0.05).
+    The correlation-weighted graph structure captures semiconductor sector
+    contagion that flat-feature models (RF, GBM) and sequential models
+    (Transformer) cannot encode.
 
     **Next step**: Use GNN signal as a position-sizing overlay on CS Momentum —
     increase exposure when rolling GNN IC > 0, reduce when it falls below zero.

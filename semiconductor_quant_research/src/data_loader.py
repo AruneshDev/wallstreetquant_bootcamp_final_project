@@ -13,7 +13,7 @@ ALL   = sorted(set(SEMI + TECH))
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
-START = '2024-01-01'
+START = '2020-01-01'
 END   = '2026-02-22'
 
 

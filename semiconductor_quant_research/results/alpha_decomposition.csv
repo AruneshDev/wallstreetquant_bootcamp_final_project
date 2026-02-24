@@ -1,0 +1,5 @@
+label,benchmark,n_days,ann_return_pct,sharpe,alpha_ann_pct,alpha_tstat,alpha_pval,beta,r2,market_corr,tracking_error,info_ratio
+CS Momentum (45d) vs SOXX,SOXX,1431,11.38,0.306,5.59,0.656,0.5119,0.024,0.0017,0.0412,20.29,0.276
+CS Momentum (45d) vs SPY,SPY,1431,11.38,0.306,6.7,0.786,0.4321,-0.0428,0.0013,-0.0361,20.29,0.33
+AMAT/LRCX Pairs vs SOXX,SOXX,980,-0.19,-0.559,-4.95,-1.022,0.3071,-0.0181,0.0043,-0.0658,9.55,-0.519
+AMAT/LRCX Pairs vs SPY,SPY,980,-0.19,-0.559,-4.92,-1.015,0.3105,-0.0421,0.0054,-0.0736,9.54,-0.515
