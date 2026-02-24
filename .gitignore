@@ -18,24 +18,12 @@ build/
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
-# ── Data files (too large for GitHub) ──
+# ── Raw data (large files) ──
 data/
 *.parquet
-*.csv
 *.pkl
 *.h5
 *.hdf5
-
-# ── Model weights ──
-models/
-*.pt
-*.pth
-*.ckpt
-*.bin
-
-# ── Results / Charts ──
-results/
-charts/
 
 # ── Environment / Secrets ──
 .env
