@@ -1,212 +1,210 @@
-```markdown
+
 # Semiconductor Alpha Research
 
-### Point72 Investor Analyst Competition — Arunesh Lal | Feb 2026
+### Point72 Investor Analyst Competition
 
-A full quantitative research pipeline applied to 12 US-listed semiconductor
-equities over a 535-day live market period (Jan 2024 – Feb 2026). The project
-follows the scientific method: hypothesis → falsification → pivot → signal
-extraction → ML layer, producing two live strategies and a GNN-based alpha
-signal that crosses the institutional IC tradability threshold.
+**Arunesh Lal | February 2026**
 
-**Live demo**: `streamlit run app.py`
+A full end-to-end quantitative research pipeline applied to U.S. semiconductor equities over a live 535-day market window (Jan 2024 – Feb 2026).
+
+The project follows the scientific method:
+
+> **Hypothesis → Falsification → Regime Discovery → Strategy Design → ML Enhancement → Evaluation**
+
+The result is:
+
+* Two live, testable systematic strategies
+* A Graph Neural Network alpha signal crossing institutional IC tradability thresholds
+* A reproducible research and backtesting framework
 
 ---
 
-## Research Narrative
+## Research Summary
 
-### Step 1 — Hypothesis
+### Initial Hypothesis
 
-*NVDA leads other semiconductor stocks by 1–5 days at daily frequency.*
+**NVDA leads semiconductor equities by 1–5 trading days.**
 
-Motivated by NVDA's outsized weight in AI capex announcements and its role as
-the de-facto benchmark for sector sentiment.
+Motivation: NVDA acts as the sector benchmark for AI capex and sentiment shocks.
 
-### Step 2 — Falsification
+### Falsification
 
-Tested all 272 directed pairs across 17 tickers over 785 trading days.
+* 17 tickers
+* 272 directed lead–lag pairs
+* 785 trading days
+* Lags tested: 1–5 days
 
-    Result : Zero pairs with positive lift at any lag 1–5d
-    Max lift: –0.20
-    Verdict : Daily lead-lag alpha REJECTED
+**Result:**
 
-Most practitioners assume NVDA leads — the data says it does not at daily
-resolution. Same-day correlation (r ≈ 0.60–0.75) is the dominant signal and
-is not exploitable after transaction costs.
+* Zero positive lift pairs
+* Maximum observed lift: –0.20
+* Same-day correlation (0.60–0.75) dominates
 
-### Step 3 — Pivot to Momentum
+**Conclusion:**
+Daily lead–lag alpha does not exist.
+Hypothesis rejected.
 
-A robustness sweep across 8 lookback windows revealed a clean
-reversal → momentum regime transition:
+This contradicts common practitioner intuition.
 
-| Window | Sharpe | Zone             |
-|--------|--------|------------------|
-| 3d     | –0.666 | Reversal         |
-| 5d     | –1.448 | Reversal         |
-| 10d    | –0.168 | Transition       |
-| 15d    | –0.304 | Transition       |
-| **20d**| **+0.520** | **Momentum starts** |
-| **45d**| **+0.590** | **Best window** |
-| 60d    | +0.478 | Momentum         |
+---
 
-The reversal → momentum crossover occurs at ~20 days, consistent with
-microstructure literature on semiconductor sector dynamics.
+## Regime Discovery — Reversal to Momentum Transition
 
-### Step 4 — ML Layer
+After rejecting lead–lag structure, a robustness sweep across momentum horizons revealed a clean regime crossover:
 
-Four models evaluated on an identical OOS test set (Apr 2025 – Feb 2026, 214 days):
+| Lookback | Sharpe    | Interpretation        |
+| -------- | --------- | --------------------- |
+| 3–5d     | Negative  | Short-term reversal   |
+| 10–15d   | Near zero | Transition zone       |
+| 20d      | Positive  | Momentum onset        |
+| 45d      | Best      | Strongest persistence |
+| 60d      | Positive  | Stabilized momentum   |
 
-| Model             | IC       | ICIR   | RankIC  | IC pos% |
-|-------------------|----------|--------|---------|---------|
-| Random Forest     | –0.01390 | –0.039 | –0.0215 | 51.6%   |
-| Gradient Boosting | –0.00900 | –0.030 | –0.0030 | 50.8%   |
-| Transformer       | +0.00633 | +0.019 | +0.0170 | 50.9%   |
-| **GNN**           | **+0.05081** | **+0.148** | **+0.0496** | **56.1%** |
-
-The GNN is the only model crossing the institutional tradability threshold
-(IC > 0.05). The correlation-weighted graph structure captures semiconductor
-sector contagion dynamics that flat-feature and sequential models cannot encode.
+Momentum emerges at approximately **20 trading days**, consistent with microstructure research on sector persistence.
 
 ---
 
 ## Strategy Results
 
-### Strategy 1 — Cross-Sectional Momentum (45d)
+### 1️⃣ Cross-Sectional Momentum (45d)
 
-Long top 3 / short bottom 3 semis ranked by trailing 45-day return.
-Daily rebalance, equal-weight legs.
+* Long top 3 / short bottom 3 semiconductor stocks
+* Ranked by trailing 45-day return
+* Daily rebalance
+* Equal-weight legs
 
-```text
-Annual Return  :  13.72%
-Annual Vol     :  23.25%
-Sharpe         :   0.590
-Sortino        :   0.923
-Max Drawdown   : -18.87%
-Total Return   :  20.44%
-Win Rate       :  50.1%
-Period         :  425 days
-```
+**Performance (425 trading days)**
 
-**Annual breakdown**
+* Annual Return: 13.7%
+* Annual Volatility: 23.3%
+* Sharpe: 0.59
+* Sortino: 0.92
+* Max Drawdown: –18.9%
+* Win Rate: 50.1%
 
-| Year | Total Ret | Sharpe | Notes |
-|------|-----------|--------|-------|
-| 2024 | +14.0%    | 1.145  | Strong AI narrative momentum |
-| 2025 | –12.8%    | –0.522 | Regime break — DeepSeek shock, sector rotation |
-| 2026 | +21.2%    | 4.576  | Only 34 days — not statistically meaningful |
+**Yearly Behavior**
 
-### Strategy 2 — NVDA / TXN Pairs Trade
+| Year | Sharpe | Notes                          |
+| ---- | ------ | ------------------------------ |
+| 2024 | 1.15   | Strong AI narrative regime     |
+| 2025 | –0.52  | Sector rotation / regime break |
+| 2026 | 4.57*  | Short sample                   |
 
-Log-spread mean reversion. Entry ±1.5σ, exit ±0.3σ, 120-day rolling
-z-score normalisation.
-
-```text
-Annual Return  :  14.09%
-Annual Vol     :  25.82%
-Sharpe         :   0.546
-Sortino        :   0.836
-Max Drawdown   : -22.88%
-Total Return   :  10.05%
-Win Rate       :  49.1%
-Trades         :  11
-```
-
-More regime-stable than CS Momentum — positive Sharpe in both full calendar
-years (2024: 1.007, 2025: 0.530).
-
-### Combined Portfolio (50/50 Equal Weight)
-
-Combining both strategies reduces the 2025 momentum drawdown while preserving
-the pairs trade's year-on-year consistency.
+Momentum is regime-dependent.
 
 ---
 
-## ML Architecture
+### 2️⃣ NVDA / TXN Mean-Reversion Pairs Trade
 
-### Features (11 per stock per day)
+* Log spread z-score (120d rolling)
+* Entry ±1.5σ
+* Exit ±0.3σ
 
-```text
-mom_1d, mom_5d, mom_10d, mom_20d, mom_60d   momentum at 5 horizons
-vol_5d, vol_20d                              short / medium volatility
-reversal_1d                                  overnight reversal
-vol_ratio                                    vol_5d / vol_20d regime indicator
-dist_52w_high                                proximity to 52-week high
-cs_rank_mom10                                cross-sectional rank signal
-```
+**Performance**
 
-Feature importance (RF): `reversal_1d` (10.1%) and `dist_52w_high` (8.2%)
-dominate — microstructure and trend signals outweigh momentum rank.
+* Annual Return: 14.1%
+* Annual Volatility: 25.8%
+* Sharpe: 0.55
+* Max Drawdown: –22.9%
+* Trades: 11
 
-### GNN Architecture
-
-```text
-Input  : node features  (12 stocks × 11 features)
-Adj    : D^{-1/2} (A + I) D^{-1/2}
-         correlation-weighted edges, threshold = 0.3
-         60-day rolling window, recomputed daily
-Conv 1 : GCNLayer(11 → 32) + ELU + LayerNorm + Dropout(0.1)
-Conv 2 : GCNLayer(32 → 32) + ELU + LayerNorm
-Head   : Linear(32 → 1) — predicted next-day return per stock
-Params : 1,601
-Device : Apple MPS (M-series)
-```
-
-Pure PyTorch — no torch_geometric dependency.
-
-### Transformer Architecture
-
-```text
-Input proj : Linear(11 → 32)
-Pos embed  : nn.Embedding(100, 32)
-Encoder    : 2 × TransformerEncoderLayer
-             d_model=32 | heads=4 | ff=128 | pre-norm
-Head       : LayerNorm → Dropout(0.1) → Linear(32 → 1)
-Seq len    : 20 days lookback
-Params     : 29,089
-Device     : Apple MPS (M-series)
-```
+More stable across regimes than cross-sectional momentum.
 
 ---
 
-## Repository Structure
+### 3️⃣ Combined Portfolio (50/50)
 
-```text
+Reduces 2025 drawdown while preserving positive year-on-year Sharpe.
+
+Demonstrates diversification between momentum and relative value structures.
+
+---
+
+## Machine Learning Layer
+
+The ML objective:
+
+> Predict next-day cross-sectional returns and evaluate Information Coefficient (IC).
+
+Out-of-sample test period:
+Apr 2025 – Feb 2026 (214 trading days)
+
+### Model Comparison
+
+| Model                    | IC        | ICIR      | RankIC    | IC Positive % |
+| ------------------------ | --------- | --------- | --------- | ------------- |
+| Random Forest            | –0.014    | –0.039    | –0.022    | 51.6%         |
+| Gradient Boosting        | –0.009    | –0.030    | –0.003    | 50.8%         |
+| Transformer              | 0.006     | 0.019     | 0.017     | 50.9%         |
+| **Graph Neural Network** | **0.051** | **0.148** | **0.050** | **56.1%**     |
+
+### Key Result
+
+The **GNN** is the only model exceeding the institutional IC tradability threshold (≈0.05).
+
+Why?
+
+Because semiconductor stocks behave as a correlated contagion network — not independent time series.
+
+Flat-feature and sequence-only models cannot encode:
+
+* Sector co-movement
+* Dynamic correlation structure
+* Cross-stock propagation effects
+
+The GNN explicitly models this structure.
+
+---
+
+## Feature Set (11 Per Stock Per Day)
+
+* Momentum: 1d, 5d, 10d, 20d, 60d
+* Volatility: 5d, 20d
+* Reversal: 1d
+* Volatility ratio regime indicator
+* Distance to 52-week high
+* Cross-sectional rank signal
+
+Baseline model importance:
+
+* `reversal_1d`
+* `dist_52w_high`
+
+Short-term microstructure signals dominate naive momentum ranking.
+
+---
+
+## GNN Architecture
+
+* Nodes: 12 stocks
+* Features: 11 per node
+* Edges: Correlation-weighted (threshold 0.3)
+* Rolling window: 60 days
+* Normalized adjacency: D⁻¹/²(A + I)D⁻¹/²
+* 2 GCN layers
+* 1,601 parameters
+* Pure PyTorch implementation
+* Apple M-series MPS acceleration
+
+Lightweight. Fully reproducible. No torch_geometric dependency.
+
+---
+
+## Project Structure
+
+```
 semiconductor_quant_research/
-│
-├── app.py                         7-page Streamlit demo
-│
+├── app.py
 ├── src/
-│   ├── data_loader.py             yfinance download + cache
-│   ├── features.py                feature engineering — 6,420 × 12 panel
-│   ├── backtest.py                CS momentum + pairs trade + reporting
-│   ├── plots.py                   13 static charts → charts/
-│   ├── model_baseline.py          Random Forest + Gradient Boosting
-│   ├── model_transformer.py       Temporal Transformer (MPS-accelerated)
-│   └── model_gnn.py               Graph Neural Network (pure PyTorch)
-│
+│   ├── data_loader.py
+│   ├── features.py
+│   ├── backtest.py
+│   ├── model_baseline.py
+│   ├── model_transformer.py
+│   └── model_gnn.py
 ├── results/
-│   ├── cs_momentum_robustness.csv
-│   ├── cs_momentum_annual.csv
-│   ├── cs_momentum_monthly.csv
-│   ├── pairs_annual.csv
-│   ├── pairs_monthly.csv
-│   ├── rf_ic.csv
-│   ├── rf_rank_ic.csv
-│   ├── gbm_ic.csv
-│   ├── gbm_rank_ic.csv
-│   ├── transformer_ic.csv
-│   ├── transformer_rank_ic.csv
-│   ├── gnn_ic.csv
-│   ├── gnn_rank_ic.csv
-│   ├── rf_feature_importance.csv
-│   └── ml_baseline_comparison.csv
-│
 ├── models/
-│   ├── transformer.pt
-│   └── gnn.pt
-│
-├── charts/                        13 PNG charts
-├── requirements.txt
+├── charts/
 └── README.md
 ```
 
@@ -215,90 +213,57 @@ semiconductor_quant_research/
 ## Quickstart
 
 ```bash
-# 1. Clone and create environment
 git clone https://github.com/AruneshDev/wallstreetquant_bootcamp_final_project.git
 cd semiconductor_quant_research
-python -m venv .venv && source .venv/bin/activate
 
-# 2. Install dependencies
+python -m venv .venv
+source .venv/bin/activate
+
 pip install -r requirements.txt
 
-# 3. Run full pipeline in order
-python src/data_loader.py         # download + cache price data
-python src/features.py            # build feature panel
-python src/backtest.py            # run strategies + save results
-python src/plots.py               # generate 13 PNG charts
-python src/model_baseline.py      # RF + GBM IC evaluation
-python src/model_transformer.py   # Transformer IC evaluation
-python src/model_gnn.py           # GNN IC evaluation (best model)
+python src/data_loader.py
+python src/features.py
+python src/backtest.py
+python src/model_gnn.py
 
-# 4. Launch Streamlit app
 streamlit run app.py
-```
-
----
-
-## Requirements
-
-```text
-pandas>=2.0
-numpy>=1.24
-torch>=2.1
-scikit-learn>=1.3
-scipy>=1.11
-yfinance>=0.2
-plotly>=5.18
-streamlit>=1.32
-kaleido>=1.0.0
 ```
 
 ---
 
 ## Data
 
-| Field    | Detail |
-|----------|--------|
-| Source   | Yahoo Finance via `yfinance` |
-| Universe | 12 semiconductors: NVDA AMD AVGO TSM QCOM AMAT LRCX MU KLAC TXN ASML MRVL + 5 big tech: AAPL MSFT GOOGL META AMZN |
-| Period   | 2024-01-03 → 2026-02-20 (535 trading days) |
-| Frequency| Daily OHLCV, adjusted close |
+* Source: Yahoo Finance via yfinance
+* Universe: 12 semiconductor equities + 5 mega-cap tech
+* Frequency: Daily adjusted close
+* Period: Jan 2024 – Feb 2026
 
 ---
 
 ## Key Limitations
 
-1. **Short history (2 years)** — Walk-forward IC estimates have wide confidence
-   intervals. A 5–10 year backtest is required before live deployment.
+1. Limited 2-year sample
+2. Transaction costs not modeled
+3. Regime dependency in momentum strategy
+4. Correlation window lag in GNN
+5. Small universe (12 stocks)
 
-2. **Transaction costs not modelled** — CS Momentum rebalances daily across
-   6 legs. At realistic bid-ask spreads (~5–10 bps per leg for mid-cap semis),
-   net Sharpe would decline meaningfully.
-
-3. **Train/test sample imbalance (Transformer)** — 321 training days with a
-   20-day sequence length gave limited samples. Transfer learning from a
-   broader equity universe would improve IC.
-
-4. **GNN correlation window** — The 60-day rolling adjacency matrix is
-   look-ahead-free but lagged. During fast regime shifts (e.g. DeepSeek shock,
-   Feb 2025), the graph reflects stale correlations for up to 60 days.
-
-5. **2025 regime break** — CS Momentum Sharpe dropped from +1.15 (2024) to
-   –0.52 (2025). Momentum strategies are regime-dependent; an HMM or rolling
-   Sharpe filter would improve capital allocation.
+This is a research prototype — not production deployment.
 
 ---
 
-## Next Steps
+## Roadmap
 
-- [ ] Regime detection overlay — cut CS Momentum exposure when rolling 63d Sharpe < 0
-- [ ] GNN signal as position-sizing multiplier on CS Momentum
-- [ ] Expand universe to 50+ semis for statistically reliable IC estimates
-- [ ] Add alternative data: earnings surprise, analyst revision momentum, SOXX flow
-- [ ] Full transaction cost model with realistic slippage simulation
-- [ ] Cointegration test across broader pairs universe beyond NVDA/TXN
+* Regime detection overlay (rolling Sharpe filter / HMM)
+* Expand universe to 50+ semiconductor-related equities
+* Full transaction cost + slippage simulation
+* Cointegration scan across broader pairs universe
+* Alternative data integration (earnings revisions, SOXX flows)
 
 ---
 
-*Author: Arunesh Lal | MS Computer Science, Boston University*
-```
-***
+## Author
+
+**Arunesh Lal**
+MS Computer Science — Boston University
+Quantitative Research | Machine Learning | Systematic Trading
