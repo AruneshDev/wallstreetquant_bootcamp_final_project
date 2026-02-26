@@ -15,3 +15,6 @@ python-dotenv
 tqdm
 ipykernel
 jupyter
+# NLP / LLM signal dependencies
+sentence-transformers
+transformers

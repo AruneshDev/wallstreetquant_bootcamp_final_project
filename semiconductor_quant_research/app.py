@@ -125,6 +125,10 @@ page = st.sidebar.radio("Navigate", [
     "📐 Alpha Attribution",
     "🏛 Market Impact",
     "🤖 ML Signal Analysis",
+    "🌐 Universe Expansion",
+    "📡 Alt-Data Signals",
+    "💬 NLP Signal",
+    "🔗 Signal Combiner",
 ])
 
 n_days = len(ret)
@@ -975,3 +979,410 @@ elif page == "🤖 ML Signal Analysis":
     **Next step**: Use GNN signal as a position-sizing overlay on CS Momentum —
     increase exposure when rolling GNN IC > 0, reduce when it falls below zero.
     """)
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE: Universe Expansion
+# ══════════════════════════════════════════════════════════════════
+
+elif page == "🌐 Universe Expansion":
+    st.title("Universe Expansion — from 12 to 500+ Equities")
+    st.caption(
+        "Cross-sectional IC improves with universe breadth: "
+        "N=12 → minimum IC resolution ≈ 0.12; N=80+ → resolution ≈ 0.025."
+    )
+
+    from src.universe import SEMI_CORE, SP_TECH_SEMI, R1000_TECH
+
+    tab1, tab2, tab3 = st.tabs([
+        "Universe Comparison",
+        "IC Breadth Benefit",
+        "Download & Verify",
+    ])
+
+    with tab1:
+        st.subheader("Universe tiers")
+        tiers = {
+            "SEMI_CORE (original)":    SEMI_CORE,
+            "SP_TECH_SEMI (~80 names)": SP_TECH_SEMI,
+            "R1000_TECH (~150 names)":  R1000_TECH,
+        }
+        rows = []
+        for name, tickers in tiers.items():
+            rows.append({
+                "Universe":      name,
+                "N Tickers":     len(tickers),
+                "Min IC res.":   f"≈ {2/len(tickers):.3f}",
+                "IC √N gain":    f"≈ {(len(tickers)/12)**0.5:.1f}×",
+                "First 5":       ", ".join(tickers[:5]),
+            })
+        st.dataframe(pd.DataFrame(rows).set_index("Universe"),
+                     use_container_width=True)
+
+        st.info(
+            "Cross-sectional IC t-stat scales as √N × IC_mean / IC_std.  "
+            "Moving from 12 to 80 tickers improves t-stat by a factor of "
+            "√(80/12) ≈ 2.6× for the same signal quality."
+        )
+
+    with tab2:
+        st.subheader("IC breadth benefit (theoretical)")
+        ns = list(range(10, 505, 5))
+        ic_mean  = 0.04
+        ic_std   = 0.12
+        t_stats  = [(n**0.5 * ic_mean / ic_std) for n in ns]
+        eff_icir = [ic_mean / (ic_std / n**0.5) for n in ns]
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=ns, y=t_stats,
+            name="IC t-stat",
+            mode="lines", line=dict(color="#6366f1", width=2)
+        ))
+        fig.add_hline(y=1.65, line_dash="dot", line_color="#f59e0b",
+                      annotation_text="p=0.10 threshold",
+                      annotation_position="right")
+        fig.add_hline(y=1.96, line_dash="dot", line_color="#22c55e",
+                      annotation_text="p=0.05 threshold",
+                      annotation_position="right")
+        fig.add_vline(x=12, line_dash="dash", line_color="gray",
+                      annotation_text="current N=12",
+                      annotation_position="top left")
+        fig.update_layout(
+            title=f"IC t-stat vs universe size (IC_mean={ic_mean}, IC_std={ic_std})",
+            template="plotly_dark",
+            xaxis_title="Universe size (N tickers)",
+            yaxis_title="IC t-stat")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("""
+        **Reading**: at N=12 tickers with IC≈0.04 and IC_std≈0.12, the daily
+        cross-sectional IC t-stat is only ≈0.35 — far below any significance
+        threshold.  At N=80 it crosses p<0.05, and at N=250 it approaches 2×
+        institutional confidence.
+        """)
+
+    with tab3:
+        st.subheader("Download expanded universe data")
+        st.code("""
+# Download and cache data for all universe tiers
+from src.data_loader import download_all_universes
+download_all_universes()
+        """, language="python")
+
+        st.info(
+            "Running `download_all_universes()` will download and cache "
+            "`prices_sp_tech_semi.parquet` and `prices_r1000_tech.parquet`.  "
+            "This takes ~2–5 minutes and requires an internet connection."
+        )
+
+        from src.universe import SP_TECH_SEMI, R1000_TECH  # noqa: F401
+        for uname in ["sp_tech_semi", "r1000_tech"]:
+            p = Path(f"data/prices_{uname}.parquet")
+            status = "✅ Cached" if p.exists() else "⏳ Not downloaded yet"
+            st.write(f"**{uname}**: {status}")
+
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE: Alt-Data Signals
+# ══════════════════════════════════════════════════════════════════
+
+elif page == "📡 Alt-Data Signals":
+    st.title("Alternative Data Signals — Beyond OHLCV")
+    st.caption(
+        "Earnings surprise (SUE), analyst revision proxy, and short interest "
+        "proxy evaluated with OOS IC/RankIC."
+    )
+
+    alt_ic_path = Path("results/alt_signal_ic.csv")
+
+    if not alt_ic_path.exists():
+        st.warning(
+            "Alt-data IC results not yet generated.  "
+            "Run: `python src/features_alt.py`"
+        )
+    else:
+        alt_ic = pd.read_csv(alt_ic_path, index_col=0)
+
+        st.subheader("Signal IC summary")
+        def color_ic(val):
+            if isinstance(val, float):
+                if val > 0.04:
+                    return "color: #22c55e; font-weight: bold"
+                elif val > 0:
+                    return "color: #f59e0b"
+                else:
+                    return "color: #ef4444"
+            return ""
+
+        st.dataframe(
+            alt_ic.style.applymap(color_ic, subset=["IC_mean", "RankIC_mean"]),
+            use_container_width=True,
+        )
+
+        tab1, tab2 = st.tabs(["IC Bar Chart", "Signal Descriptions"])
+
+        with tab1:
+            fig = go.Figure()
+            colors = ["#22c55e" if v > 0.04 else "#f59e0b" if v > 0 else "#ef4444"
+                      for v in alt_ic["IC_mean"]]
+            fig.add_trace(go.Bar(
+                x=alt_ic.index,
+                y=alt_ic["IC_mean"],
+                marker_color=colors,
+                text=[f"{v:.5f}" for v in alt_ic["IC_mean"]],
+                textposition="outside",
+                name="IC mean"
+            ))
+            fig.add_hline(y=0,    line_dash="dash", line_color="white",
+                          opacity=0.4)
+            fig.add_hline(y=0.04, line_dash="dot",  line_color="#22c55e",
+                          opacity=0.6,
+                          annotation_text="IC > 0.04 threshold",
+                          annotation_position="right")
+            fig.update_layout(
+                title="Alternative data signal IC (OOS, 5-day forward return)",
+                template="plotly_dark",
+                xaxis_title="Signal",
+                yaxis_title="IC mean")
+            st.plotly_chart(fig, use_container_width=True)
+
+        with tab2:
+            st.markdown("""
+            | Signal | Alpha Hypothesis | Expected IC | Failure Modes |
+            |--------|-----------------|-------------|---------------|
+            | **SUE** | Post-earnings drift: stocks beating consensus continue to outperform 1–60d | +0.03–0.08 | Crowding, earnings manipulation |
+            | **SUE decay** | SUE weighted by recency (half-life 30d) | +0.03–0.06 | Same as SUE; decays with time |
+            | **ARM** | Cumulative earnings surprise proxies analyst estimate revisions | +0.01–0.04 | Proxy quality, low-coverage sectors |
+            | **SI proxy** | Low short interest → less informed bearish conviction → outperformance | +0.01–0.03 | Short squeezes, borrow cost |
+            """)
+
+            st.info(
+                "All signals use a `.shift(1)` alignment — only information "
+                "available at day t-1 close is used in day t signals.  "
+                "No lookahead bias."
+            )
+
+    st.markdown("---")
+    st.code("""
+# Run the alt-data pipeline from terminal:
+python src/features_alt.py
+    """, language="bash")
+
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE: NLP Signal
+# ══════════════════════════════════════════════════════════════════
+
+elif page == "💬 NLP Signal":
+    st.title("NLP / LLM Signal — Earnings Call Sentiment")
+    st.caption(
+        "Deep-learning text embeddings from SEC EDGAR 8-K filings, evaluated "
+        "as cross-sectional alpha signals."
+    )
+
+    nlp_ic_path = Path("results/nlp_ic.csv")
+    nlp_feat_path = Path("data/features_nlp.parquet")
+
+    col1, col2 = st.columns(2)
+    col1.metric("Embedding Model", "all-MiniLM-L6-v2")
+    col2.metric("Embedding Dim", "384-d")
+
+    st.markdown("""
+    **Architecture**:
+    1. Fetch quarterly 8-K filings from SEC EDGAR for each semiconductor ticker.
+    2. Embed with `sentence-transformers/all-MiniLM-L6-v2` (22M params, runs locally).
+    3. Project onto a manually defined positive/negative polarity axis.
+    4. Forward-fill from each earnings date → leakage-free daily signal.
+    5. Evaluate OOS IC on 10-day forward returns.
+    """)
+
+    if not nlp_ic_path.exists():
+        st.warning(
+            "NLP IC results not yet generated.  "
+            "Run: `python src/nlp_signal.py`  "
+            "(requires `pip install sentence-transformers`)"
+        )
+    else:
+        nlp_ic = pd.read_csv(nlp_ic_path, index_col=0)
+        st.subheader("NLP signal IC")
+        st.dataframe(nlp_ic, use_container_width=True)
+
+        fig = go.Figure()
+        colors = ["#22c55e" if v > 0.02 else "#f59e0b" if v > 0 else "#ef4444"
+                  for v in nlp_ic["IC_mean"]]
+        fig.add_trace(go.Bar(
+            x=nlp_ic.index,
+            y=nlp_ic["IC_mean"],
+            marker_color=colors,
+            text=[f"{v:.5f}" for v in nlp_ic["IC_mean"]],
+            textposition="outside",
+        ))
+        fig.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.4)
+        fig.update_layout(
+            title="NLP signal IC (OOS, 10-day forward return)",
+            template="plotly_dark",
+            xaxis_title="Signal",
+            yaxis_title="IC mean")
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("""
+    **Alpha hypothesis for nlp_sent**:
+    > Loughran & McDonald (2011) show that tone in SEC filings predicts subsequent
+    > returns.  A positive earnings call tone signals management confidence and
+    > often accompanies positive estimate revisions — both of which drive PEAD.
+    > Expected IC: +0.02–0.05 on 10-day horizon.
+
+    **Alpha hypothesis for nlp_drift**:
+    > Tone *improvement* relative to year-ago conveys incremental information
+    > beyond the current quarter's sentiment level.  A company that has
+    > dramatically improved its communication tone (e.g. from cautious to
+    > confident) is more likely to beat next quarter.
+    > Expected IC: +0.01–0.03.
+
+    **Failure modes**:
+    - Management "cheerleading": language is optimistic by default; normalisation
+      needed (cross-sectional z-score handles this).
+    - EDGAR 8-K ≠ full earnings call transcript: the text quality is lower.
+    - Small universe (12 semis): IC t-stat is low regardless of signal quality.
+    """)
+
+    st.code("""
+# Run the NLP signal pipeline from terminal:
+pip install sentence-transformers
+python src/nlp_signal.py
+    """, language="bash")
+
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE: Signal Combiner
+# ══════════════════════════════════════════════════════════════════
+
+elif page == "🔗 Signal Combiner":
+    st.title("Signal Combiner — ML as a Meta-Model")
+    st.caption(
+        "GBM Gradient Boosting combines IC-positive base signals into a single "
+        "composite rank score.  Walk-forward OOS evaluation."
+    )
+
+    combiner_path = Path("results/signal_combiner_summary.csv")
+    indiv_path    = Path("results/individual_signal_ic.csv")
+    weights_path  = Path("results/signal_weights.csv")
+    folds_path    = Path("results/signal_combiner_folds.csv")
+
+    st.markdown("""
+    **Key insight** (Grinold & Kahn, Fundamental Law):
+
+    $$\\text{ICIR}_{\\text{combined}} \\approx \\text{ICIR}_{\\text{individual}} \\times \\sqrt{N}$$
+
+    Combining N=5 partially-decorrelated signals can improve ICIR by up to √5 ≈ 2.2×.
+    The GBM meta-model learns non-linear combinations and interaction terms between signals.
+    """)
+
+    if not combiner_path.exists():
+        st.warning(
+            "Signal combiner results not yet generated.  Run:  \n"
+            "`python src/model_signal_combiner.py`  \n"
+            "(requires features_alt.parquet and features.parquet to be built first)"
+        )
+    else:
+        summary = pd.read_csv(combiner_path, index_col=0)
+
+        st.subheader("Individual signals vs GBM combiner — IC comparison")
+        st.dataframe(summary, use_container_width=True)
+
+        if "IC_mean" in summary.columns:
+            colors = ["#22c55e" if v > 0.04 else "#f59e0b" if v > 0 else "#ef4444"
+                      for v in summary["IC_mean"]]
+            fig = go.Figure(go.Bar(
+                x=summary.index,
+                y=summary["IC_mean"],
+                marker_color=colors,
+                text=[f"{v:.5f}" for v in summary["IC_mean"]],
+                textposition="outside",
+            ))
+            fig.add_hline(y=0,    line_dash="dash", line_color="white",
+                          opacity=0.4)
+            fig.add_hline(y=0.04, line_dash="dot",  line_color="#22c55e",
+                          opacity=0.6,
+                          annotation_text="IC > 0.04",
+                          annotation_position="right")
+            combiner_ic = summary.loc["GBM_COMBINER", "IC_mean"] \
+                if "GBM_COMBINER" in summary.index else None
+            fig.update_layout(
+                title="Signal IC: individual vs GBM combiner",
+                template="plotly_dark",
+                xaxis_title="Signal / Model",
+                yaxis_title="IC mean (OOS)")
+            st.plotly_chart(fig, use_container_width=True)
+
+            if combiner_ic and combiner_ic > summary["IC_mean"].drop(
+                    "GBM_COMBINER", errors="ignore").max():
+                st.success(
+                    f"✅ GBM combiner IC ({combiner_ic:.5f}) exceeds best individual "
+                    f"signal IC — the meta-model adds value."
+                )
+
+    if weights_path.exists():
+        weights = pd.read_csv(weights_path, index_col=0).sort_values(
+            "importance", ascending=False)
+        st.subheader("GBM signal weights (avg feature importance)")
+        fig = go.Figure(go.Bar(
+            x=weights.index,
+            y=weights["importance"],
+            marker_color="#6366f1",
+            text=[f"{v:.4f}" for v in weights["importance"]],
+            textposition="outside",
+        ))
+        fig.update_layout(
+            title="GBM feature importances — signal combination weights",
+            template="plotly_dark",
+            xaxis_title="Base signal",
+            yaxis_title="Avg importance")
+        st.plotly_chart(fig, use_container_width=True)
+
+    if folds_path.exists():
+        folds = pd.read_csv(folds_path)
+        st.subheader("Walk-forward fold diagnostics")
+        st.dataframe(folds, use_container_width=True)
+
+        fig = go.Figure(go.Bar(
+            x=folds["test_start"].astype(str),
+            y=folds["fold_IC"],
+            marker_color=["#22c55e" if v > 0 else "#ef4444"
+                          for v in folds["fold_IC"]],
+            text=[f"{v:.4f}" for v in folds["fold_IC"]],
+            textposition="outside",
+        ))
+        fig.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.4)
+        fig.update_layout(
+            title="Per-fold OOS IC (test start date)",
+            template="plotly_dark",
+            xaxis_title="Test fold start",
+            yaxis_title="Fold IC")
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+    st.info("""
+    **Design rationale**: The original ML models (RF, GBM, Transformer, GNN) had
+    negative IC because they tried to predict raw 5-day returns directly from
+    OHLCV features on a 12-ticker universe — a nearly impossible task given the
+    noise/signal ratio.
+
+    The combiner instead:
+    1. Feeds ML **pre-computed IC-positive signals** (momentum rank, SUE, NLP).
+    2. Targets **cross-sectional rank** (more robust than raw return level).
+    3. Uses a shallow GBM (max_depth=2) to avoid overfit.
+    4. Retrains every 63 days to track regime changes.
+
+    This re-positioning transforms ML from a "return forecaster" to a
+    "signal weighting engine" — the role where ML genuinely adds alpha.
+    """)
+
+    st.code("""
+# Run the full signal combiner pipeline:
+python src/features_alt.py   # build alt-data features
+python src/nlp_signal.py     # build NLP features (optional)
+python src/model_signal_combiner.py  # run combiner
+    """, language="bash")
+
