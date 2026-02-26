@@ -1,0 +1,5 @@
+signal,fwd_days,IC_mean,IC_std,ICIR,RankIC_mean,RankICIR,IC_pos_pct,N_days,N_tickers
+SUE (earnings surprise),5,-0.00433,0.25016,-0.0173,0.01799,0.0716,0.0618,1536,12
+SUE decay-weighted,5,0.00413,0.33152,0.0125,-0.00301,-0.0097,0.4591,220,12
+Analyst revision proxy,5,0.05035,0.32761,0.1537,0.03284,0.0881,0.5869,259,12
+Short interest proxy,5,-0.00247,0.32911,-0.0075,0.00378,0.0116,0.5059,1526,12

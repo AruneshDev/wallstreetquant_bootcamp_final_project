@@ -239,7 +239,7 @@ def compute_earnings_surprise_signal(
             pd.Series(ann_dates, index=ann_dates)
             .reindex(prices.index, method="ffill")
         )
-        days_since = (prices.index - daily_last_ann).days.clip(0, 9999)
+        days_since = pd.Series((prices.index - daily_last_ann).values,index=prices.index).dt.days.clip(0, 9999)
 
         # ── SUE decay (half-life ~30 days) ────────────────────────────────────
         sue_decay = daily_sue * np.exp(-days_since / 30.0)

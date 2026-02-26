@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 universe.py — Canonical ticker universe definitions for cross-sectional research.
 
@@ -10,21 +12,8 @@ Provides three universe tiers:
   R1000_TECH   : Approximate Russell-1000 tech/semi proxy (~150 tickers).
                  Full cross-sectional universe for alpha research.
 
-All lists are deliberately static for reproducibility.  They represent the
-S&P / Russell constituents as of early 2025 — a reasonable approximation for
-the 2020-2026 backtest period.  Survivorship bias exists at the margins but
-is manageable for an IC / signal evaluation exercise.
-
-Alpha hypothesis (why breadth matters):
-  - IC is computed as a cross-sectional rank correlation on a given day.
-  - With N=12 tickers the minimum meaningful IC difference is ~0.12 (1 rank
-    flip).  With N=80 the resolution is ~0.025, well within the IC range we
-    care about (0.03–0.10).
-  - ICIR = IC_mean / IC_std improves with N because idiosyncratic noise
-    averages out in the numerator more than it inflates the denominator.
+...
 """
-
-from __future__ import annotations
 
 # ── Original 12-name semiconductor core ──────────────────────────────────────
 SEMI_CORE: list[str] = [
