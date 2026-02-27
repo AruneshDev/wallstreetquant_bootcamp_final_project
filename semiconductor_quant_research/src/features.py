@@ -21,10 +21,15 @@ TARGET_COL = 'fwd_ret_5d'    # ← was fwd_ret_1d
 
 def build_features(close: pd.DataFrame,
                    volume: pd.DataFrame,
-                   ret:    pd.DataFrame) -> pd.DataFrame:
+                   ret:    pd.DataFrame,
+                   universe_name: str = "semi_core") -> pd.DataFrame:
     """
     Flat feature matrix: (date × ticker, features).
     All features lagged by 1 day — zero lookahead.
+
+    Works on any universe tier (semi_core, sp_tech_semi, r1000_tech).
+    All tickers present in *ret* are used; the SEMI constant is only
+    a fallback for legacy semi_core calls.
 
     Features:
       Momentum    : 1d, 5d, 10d, 20d, 60d log return
@@ -38,11 +43,22 @@ def build_features(close: pd.DataFrame,
     Target:
       fwd_ret_5d  : next 5-day cumulative log return
                     (~2x less noisy than 1d, improves IC)
+
+    Parameters
+    ----------
+    close         : Wide-format close prices (dates × tickers).
+    volume        : Wide-format volume DataFrame.
+    ret           : Wide-format log returns.
+    universe_name : Informational tag; also controls output path when
+                    called from __main__.  Does NOT filter tickers —
+                    all tickers in *ret* are used.
     """
-    semi_tickers = [t for t in SEMI if t in ret.columns]
+    # Use all tickers in the provided DataFrames (not just SEMI_CORE)
+    all_tickers = [t for t in ret.columns
+                   if t in close.columns and t in volume.columns]
     records = []
 
-    for ticker in semi_tickers:
+    for ticker in all_tickers:
         r = ret[ticker]
         c = close[ticker]
         v = volume[ticker]
@@ -135,13 +151,33 @@ def load_features(path: str = "data/features.parquet") -> pd.DataFrame:
 
 if __name__ == "__main__":
     import sys
+    import argparse
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from src.data_loader import load
-    close, volume, ret = load()
-    panel = build_features(close, volume, ret)
-    save_features(panel)
-    print(f"\nPeriod : {panel.index.get_level_values('date').min()} "
+
+    parser = argparse.ArgumentParser(description="Build OHLCV feature panel.")
+    parser.add_argument(
+        "--universe", default="semi_core",
+        choices=["semi_core", "sp_tech_semi", "r1000_tech"],
+        help="Universe tier to build features for.",
+    )
+    args = parser.parse_args()
+
+    universe_name = args.universe
+    close, volume, ret = load(universe_name=universe_name)
+
+    # Output path includes universe tag for traceability
+    if universe_name == "semi_core":
+        out_path = "data/features.parquet"          # keep legacy default
+    else:
+        out_path = f"data/features_{universe_name}.parquet"
+
+    panel = build_features(close, volume, ret, universe_name=universe_name)
+    save_features(panel, path=out_path)
+
+    print(f"\nUniverse : {universe_name}  ({ret.shape[1]} tickers)")
+    print(f"Period   : {panel.index.get_level_values('date').min()} "
           f"→ {panel.index.get_level_values('date').max()}")
-    print(f"Days   : {panel.index.get_level_values('date').nunique()} "
+    print(f"Days     : {panel.index.get_level_values('date').nunique()} "
           f"| Tickers: {panel.index.get_level_values('ticker').nunique()}")
     print(f"\nFeature stats:\n{panel[FEATURE_COLS].describe().round(4)}")

@@ -479,33 +479,59 @@ def benchmark_individual_signal_ic(
 
 if __name__ == "__main__":
     import sys
+    import argparse
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
     from src.data_loader import load
     from src.features import load_features
 
+    parser = argparse.ArgumentParser(
+        description="Run GBM signal combiner on a universe tier."
+    )
+    parser.add_argument(
+        "--universe", default="semi_core",
+        choices=["semi_core", "sp_tech_semi", "r1000_tech"],
+        help="Universe tier to run the signal combiner on.",
+    )
+    args = parser.parse_args()
+    universe_name = args.universe
+
+    # ── Resolve feature file paths ────────────────────────────────────────────
+    if universe_name == "semi_core":
+        ohlcv_path = Path("data/features.parquet")
+        alt_path   = Path("data/features_alt.parquet")
+        nlp_path   = Path("data/features_nlp.parquet")
+        ic_path    = Path("results/ic_study_semi_core.csv")
+        out_prefix = "results/signal_combiner"
+    else:
+        ohlcv_path = Path(f"data/features_{universe_name}.parquet")
+        alt_path   = Path(f"data/features_alt_{universe_name}.parquet")
+        nlp_path   = Path(f"data/features_nlp_{universe_name}.parquet")
+        ic_path    = Path(f"results/ic_study_{universe_name}.csv")
+        out_prefix = f"results/signal_combiner_{universe_name}"
+
     # ── Load base data ────────────────────────────────────────────────────────
-    print("Loading data...")
-    close, volume, ret = load(universe_name="semi_core")
-    panel_ohlcv = load_features("data/features.parquet")
+    print(f"\nLoading data for universe={universe_name}...")
+    close, volume, ret = load(universe_name=universe_name)
+    panel_ohlcv        = load_features(str(ohlcv_path))
 
     # ── Load alt-data features (optional) ────────────────────────────────────
-    alt_path = Path("data/features_alt.parquet")
     panel_alt: Optional[pd.DataFrame] = None
     if alt_path.exists():
         panel_alt = pd.read_parquet(alt_path)
         print(f"  Alt-data features loaded: {panel_alt.shape}")
     else:
-        print("  Alt-data features not found — run src/features_alt.py first.")
+        print(f"  Alt-data features not found at {alt_path} — "
+              "run features_alt.py --universe {universe_name} first.")
 
     # ── Load NLP features (optional) ─────────────────────────────────────────
-    nlp_path = Path("data/features_nlp.parquet")
     panel_nlp: Optional[pd.DataFrame] = None
     if nlp_path.exists():
         panel_nlp = pd.read_parquet(nlp_path)
         print(f"  NLP features loaded: {panel_nlp.shape}")
     else:
-        print("  NLP features not found — run src/nlp_signal.py first.")
+        print(f"  NLP features not found at {nlp_path} — "
+              "run nlp_signal.py --universe {universe_name} first.")
 
     # ── Build combined panel ──────────────────────────────────────────────────
     print("\nBuilding combined signal panel...")
@@ -513,21 +539,63 @@ if __name__ == "__main__":
         panel_ohlcv, panel_alt, panel_nlp, ret, mom_win=45
     )
     print(f"  Combined panel: {combined.shape}")
-    print(f"  Signals available: {_available_signals(combined)}")
+    available = _available_signals(combined)
+    print(f"  Signals available: {available}")
+
+    # ── Filter to IC-positive signals only ────────────────────────────────────
+    # Load IC study results if available; otherwise use all available signals.
+    ic_positive_signals: list[str] = []
+    if ic_path.exists():
+        ic_df = pd.read_csv(ic_path, index_col="signal")
+        ic_positive_signals = ic_df[
+            (ic_df["IC_mean"]    > 0.02) &
+            (ic_df["IC_pos_pct"] > 0.52)
+        ].index.tolist()
+        # Keep only signals that also appear in the combined panel
+        ic_positive_signals = [s for s in ic_positive_signals
+                               if s in available]
+        print(f"\n  IC-positive signals (from {ic_path.name}): "
+              f"{ic_positive_signals}")
+    else:
+        print(f"\n  IC study file not found ({ic_path}).  "
+              "Using all available signals as fallback.\n"
+              "  → Run src/ic_study.py --universe {universe_name} first for "
+              "cleaner combiner inputs.")
+        ic_positive_signals = available
+
+    if not ic_positive_signals:
+        print(
+            f"\n⚠️  No IC-positive base signals found for {universe_name}.\n"
+            "   Expand feature set before training combiner.\n"
+            "   (earnings quality, analyst coverage, sector-relative features)"
+        )
+        sys.exit(0)
 
     # ── Benchmark individual signals ──────────────────────────────────────────
     indiv_df = benchmark_individual_signal_ic(combined)
-    indiv_df.to_csv("results/individual_signal_ic.csv")
-    print("\n✓ Saved results/individual_signal_ic.csv")
+    indiv_df.to_csv(f"{out_prefix}_individual_ic.csv")
+    print(f"\n✓ Saved {out_prefix}_individual_ic.csv")
+
+    # ── Override BASE_SIGNALS with IC-positive subset for this run ───────────
+    # Temporarily restrict the global list so run_signal_combiner uses only
+    # the IC-vetted signals.
+    original_base_signals = list(BASE_SIGNALS)
+    BASE_SIGNALS.clear()
+    BASE_SIGNALS.extend(ic_positive_signals)
+    print(f"\n  Training combiner with IC-positive signals: {BASE_SIGNALS}")
 
     # ── Run signal combiner ───────────────────────────────────────────────────
     result = run_signal_combiner(combined, verbose=True)
 
+    # Restore original list
+    BASE_SIGNALS.clear()
+    BASE_SIGNALS.extend(original_base_signals)
+
     # ── Save results ──────────────────────────────────────────────────────────
     result["ic_series"].to_csv(
-        "results/signal_combiner_ic.csv", header=["ic"])
+        f"{out_prefix}_ic.csv", header=["ic"])
     result["rank_ic_series"].to_csv(
-        "results/signal_combiner_rank_ic.csv", header=["rank_ic"])
+        f"{out_prefix}_rank_ic.csv", header=["rank_ic"])
 
     # Compare combiner vs individual signals
     summary = indiv_df.copy()
@@ -540,19 +608,19 @@ if __name__ == "__main__":
         "N_days":     result["metrics"]["N_days"],
     }, name="GBM_COMBINER")
     summary = pd.concat([summary, combiner_row.to_frame().T])
-    summary.to_csv("results/signal_combiner_summary.csv")
-    print("\n✓ Saved results/signal_combiner_summary.csv")
+    summary.to_csv(f"{out_prefix}_summary.csv")
+    print(f"\n✓ Saved {out_prefix}_summary.csv")
 
-    result["feature_importances"].to_csv("results/signal_weights.csv",
-                                          header=["importance"])
-    print("✓ Saved results/signal_weights.csv")
+    result["feature_importances"].to_csv(
+        f"{out_prefix}_weights.csv", header=["importance"])
+    print(f"✓ Saved {out_prefix}_weights.csv")
 
-    result["fold_metrics"].to_csv("results/signal_combiner_folds.csv",
-                                   index=False)
-    print("✓ Saved results/signal_combiner_folds.csv")
+    result["fold_metrics"].to_csv(
+        f"{out_prefix}_folds.csv", index=False)
+    print(f"✓ Saved {out_prefix}_folds.csv")
 
     print("\n" + "=" * 60)
-    print("  Signal Combiner Summary")
+    print(f"  Signal Combiner Summary  [{universe_name}]")
     print("=" * 60)
     print(summary.to_string())
     print("=" * 60)

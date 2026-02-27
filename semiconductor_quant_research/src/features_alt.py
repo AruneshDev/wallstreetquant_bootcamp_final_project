@@ -76,6 +76,17 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
+# tqdm is optional — fall back gracefully if not installed
+try:
+    from tqdm import tqdm as _tqdm
+    def _progress(iterable, desc="", total=None):
+        return _tqdm(iterable, desc=desc, total=total, ncols=80)
+except ImportError:
+    def _progress(iterable, desc="", total=None):  # type: ignore[misc]
+        if desc:
+            print(f"{desc} ({total or '?'} items)...")
+        return iterable
+
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
@@ -186,11 +197,14 @@ def compute_earnings_surprise_signal(
     """
     all_records: list[pd.DataFrame] = []
 
-    for ticker in tickers:
+    for ticker in _progress(tickers, desc="SUE signal", total=len(tickers)):
         if ticker not in prices.columns:
             continue
 
-        eps_hist = _fetch_eps_history(ticker)
+        try:
+            eps_hist = _fetch_eps_history(ticker)
+        except Exception:
+            eps_hist = None
         if eps_hist is None or len(eps_hist) < 2:
             # Fallback: generate a zero-filled placeholder so the ticker
             # remains in the panel; IC will be ~0 for this name.
@@ -316,11 +330,14 @@ def compute_analyst_revision_signal(
     """
     all_records: list[pd.DataFrame] = []
 
-    for ticker in tickers:
+    for ticker in _progress(tickers, desc="ARM signal", total=len(tickers)):
         if ticker not in prices.columns:
             continue
 
-        eps_hist = _fetch_eps_history(ticker)
+        try:
+            eps_hist = _fetch_eps_history(ticker)
+        except Exception:
+            eps_hist = None
 
         if eps_hist is not None and len(eps_hist) >= 2:
             if "epsEstimate" in eps_hist.columns \
@@ -425,7 +442,7 @@ def compute_short_interest_proxy(
     """
     all_records: list[pd.DataFrame] = []
 
-    for ticker in tickers:
+    for ticker in _progress(tickers, desc="SI proxy", total=len(tickers)):
         if ticker not in ret.columns:
             continue
 
@@ -476,11 +493,12 @@ def compute_short_interest_proxy(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_alt_features(
-    tickers: list[str],
-    prices:  pd.DataFrame,
-    ret:     pd.DataFrame,
-    save:    bool = True,
-    path:    str  = "data/features_alt.parquet",
+    tickers:       list[str],
+    prices:        pd.DataFrame,
+    ret:           pd.DataFrame,
+    save:          bool = True,
+    path:          Optional[str] = None,
+    universe_name: str = "semi_core",
 ) -> pd.DataFrame:
     """
     Build the combined alternative-data feature panel for *tickers*.
@@ -491,20 +509,33 @@ def build_alt_features(
       - Short interest proxy    (si_proxy).
 
     All features are leakage-free (shifted 1 day relative to price dates).
+    The cross-sectional z-scores are computed over the FULL universe passed
+    in *tickers*, not just the semi sub-universe.
 
     Parameters
     ----------
-    tickers : Universe of ticker symbols.
-    prices  : Wide-format close prices.
-    ret     : Wide-format log returns.
-    save    : If True, write the panel to *path* as Parquet.
-    path    : Output parquet path.
+    tickers       : Universe of ticker symbols.
+    prices        : Wide-format close prices.
+    ret           : Wide-format log returns.
+    save          : If True, write the panel to *path* as Parquet.
+    path          : Output parquet path.  Defaults to
+                    data/features_alt_{universe_name}.parquet (or
+                    data/features_alt.parquet for semi_core).
+    universe_name : Tag for output file naming and print headers.
 
     Returns
     -------
     panel : DataFrame with MultiIndex (date, ticker), alt-data features.
     """
-    print(f"\nBuilding alt-data features for {len(tickers)} tickers...")
+    # Resolve output path
+    if path is None:
+        if universe_name == "semi_core":
+            path = "data/features_alt.parquet"       # legacy default
+        else:
+            path = f"data/features_alt_{universe_name}.parquet"
+
+    print(f"\nBuilding alt-data features | universe={universe_name} "
+          f"| {len(tickers)} tickers...")
 
     sue_panel = compute_earnings_surprise_signal(tickers, prices)
     arm_panel = compute_analyst_revision_signal(tickers, prices, ret)
@@ -646,18 +677,38 @@ def evaluate_signal_ic(
 
 if __name__ == "__main__":
     import sys
+    import argparse
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
     from src.data_loader import load
-    from src.universe import SEMI_CORE
+    from src.universe import get_universe
 
-    close, volume, ret = load(universe_name="semi_core")
-    tickers = [t for t in SEMI_CORE if t in close.columns]
+    parser = argparse.ArgumentParser(
+        description="Build alt-data feature panel for a universe tier."
+    )
+    parser.add_argument(
+        "--universe", default="semi_core",
+        choices=["semi_core", "sp_tech_semi", "r1000_tech"],
+        help="Universe tier to build features for.",
+    )
+    parser.add_argument(
+        "--fwd-days", type=int, default=5,
+        help="Forward return horizon for IC evaluation.",
+    )
+    args = parser.parse_args()
 
-    print(f"\nAlt-data pipeline | {len(tickers)} tickers")
+    universe_name = args.universe
+    close, volume, ret = load(universe_name=universe_name)
+    all_tickers   = get_universe(universe_name)
+    tickers       = [t for t in all_tickers if t in close.columns]
+
+    print(f"\nAlt-data pipeline | universe={universe_name} | "
+          f"{len(tickers)} tickers")
     print(f"Period: {ret.index[0].date()} → {ret.index[-1].date()}")
 
-    panel = build_alt_features(tickers, close, ret, save=True)
+    panel = build_alt_features(
+        tickers, close, ret, save=True, universe_name=universe_name
+    )
 
     # ── Evaluate each signal ──────────────────────────────────────────────────
     results = []
@@ -670,13 +721,19 @@ if __name__ == "__main__":
         if sig_col not in panel.columns:
             continue
         res = evaluate_signal_ic(
-            panel[[sig_col]], sig_col, ret, fwd_days=5, label=label
+            panel[[sig_col]], sig_col, ret,
+            fwd_days=args.fwd_days, label=label
         )
         results.append(res)
 
-    # ── Save IC summary ───────────────────────────────────────────────────────
+    # ── Save IC summary (per-universe file) ───────────────────────────────────
     Path("results").mkdir(exist_ok=True)
+    if universe_name == "semi_core":
+        ic_out = "results/alt_signal_ic.csv"          # legacy default
+    else:
+        ic_out = f"results/alt_signal_ic_{universe_name}.csv"
+
     ic_df = pd.DataFrame(results).set_index("signal")
-    ic_df.to_csv("results/alt_signal_ic.csv")
-    print("\n✓ Saved results/alt_signal_ic.csv")
+    ic_df.to_csv(ic_out)
+    print(f"\n✓ Saved {ic_out}")
     print(ic_df.to_string())

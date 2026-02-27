@@ -1,0 +1,13 @@
+signal,label,semi_core_IC,semi_core_flag,sp_tech_semi_IC,sp_tech_semi_flag,r1000_tech_IC,r1000_tech_flag,best_universe
+arm_signal,Analyst revision proxy (ARM),0.0504,✅,0.0153,~,0.0074,~,semi_core
+cs_rank_mom10,CS rank momentum 10d,-0.0094,❌,-0.0117,❌,-0.0097,❌,semi_core
+dist_52w_high,Distance from 52w high,0.0256,✅,0.0036,~,0.0125,~,semi_core
+mom_20d,Momentum 20d,0.0062,~,-0.0087,❌,-0.0033,❌,semi_core
+mom_60d,Momentum 60d,0.0271,~,0.0046,~,0.0064,~,semi_core
+nlp_drift,NLP tone drift (vs year-ago),-0.0068,❌,,—,,—,semi_core
+nlp_sent,NLP sentiment score,-0.0051,❌,,—,,—,semi_core
+reversal_1d,Short-term reversal 1d,0.0065,~,0.0074,~,0.0101,~,r1000_tech
+si_proxy,Short interest proxy (SI),-0.0025,❌,-0.0072,❌,-0.0061,❌,semi_core
+sue,Earnings surprise (SUE),-0.0043,❌,0.0266,~,0.014,~,sp_tech_semi
+sue_decay,SUE decay-weighted,0.0041,~,0.0455,~,0.0272,~,sp_tech_semi
+vol_ratio,Volume ratio (5d/20d),-0.0065,❌,-0.0026,❌,0.0023,~,r1000_tech

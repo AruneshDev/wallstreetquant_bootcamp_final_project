@@ -363,30 +363,29 @@ def _build_polarity_axis(model) -> np.ndarray:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_nlp_signal(
-    tickers:  list[str],
-    prices:   pd.DataFrame,
-    ret:      pd.DataFrame,
-    save:     bool = True,
-    path:     str  = "data/features_nlp.parquet",
+    tickers:       list[str],
+    prices:        pd.DataFrame,
+    ret:           pd.DataFrame,
+    save:          bool = True,
+    path:          Optional[str] = None,
+    universe_name: str = "semi_core",
 ) -> pd.DataFrame:
     """
     Build the NLP sentiment signal panel for *tickers*.
 
-    For each (ticker, quarter):
-      1. Fetch 8-K filing text from EDGAR (or use synthetic fallback).
-      2. Embed using sentence-transformers/all-MiniLM-L6-v2.
-      3. Project onto the positive polarity axis → NLP_SENT score.
-      4. Compare to year-ago embedding → NLP_DRIFT score.
-      5. Forward-fill from earnings date to next earnings date.
-      6. Shift 1 day for leakage-free alignment.
+    Works on any universe tier.  For tickers without a known CIK the code
+    falls back to synthetic embeddings automatically.
 
     Parameters
     ----------
-    tickers : Universe of ticker symbols.
-    prices  : Wide-format close prices (DatetimeIndex × tickers).
-    ret     : Wide-format log returns.
-    save    : If True, write panel to *path*.
-    path    : Output parquet file.
+    tickers       : Universe of ticker symbols.
+    prices        : Wide-format close prices (DatetimeIndex × tickers).
+    ret           : Wide-format log returns.
+    save          : If True, write panel to *path*.
+    path          : Output parquet file.  Defaults to
+                    data/features_nlp_{universe_name}.parquet (or
+                    data/features_nlp.parquet for semi_core).
+    universe_name : Tag for output file naming and print headers.
 
     Returns
     -------
@@ -394,7 +393,15 @@ def build_nlp_signal(
               nlp_sent   — sentiment score [-1, 1], higher = more positive.
               nlp_drift  — tone change vs year-ago, higher = more positive shift.
     """
-    print("\nBuilding NLP signal...")
+    # Resolve output path
+    if path is None:
+        if universe_name == "semi_core":
+            path = "data/features_nlp.parquet"
+        else:
+            path = f"data/features_nlp_{universe_name}.parquet"
+
+    print(f"\nBuilding NLP signal | universe={universe_name} | "
+          f"{len(tickers)} tickers...")
     model        = load_embedding_model()
     polarity_ax  = _build_polarity_axis(model)
 
@@ -539,19 +546,39 @@ def load_nlp_features(
 
 if __name__ == "__main__":
     import sys
+    import argparse
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
     from src.data_loader import load
-    from src.universe import SEMI_CORE
+    from src.universe import get_universe
     from src.features_alt import evaluate_signal_ic
 
-    close, volume, ret = load(universe_name="semi_core")
-    tickers = [t for t in SEMI_CORE if t in close.columns]
+    parser = argparse.ArgumentParser(
+        description="Build NLP sentiment signal panel for a universe tier."
+    )
+    parser.add_argument(
+        "--universe", default="semi_core",
+        choices=["semi_core", "sp_tech_semi", "r1000_tech"],
+        help="Universe tier to build NLP features for.",
+    )
+    parser.add_argument(
+        "--fwd-days", type=int, default=10,
+        help="Forward return horizon for IC evaluation.",
+    )
+    args = parser.parse_args()
 
-    print(f"\nNLP signal pipeline | {len(tickers)} tickers")
+    universe_name = args.universe
+    close, volume, ret = load(universe_name=universe_name)
+    all_tickers   = get_universe(universe_name)
+    tickers       = [t for t in all_tickers if t in close.columns]
+
+    print(f"\nNLP signal pipeline | universe={universe_name} | "
+          f"{len(tickers)} tickers")
     print(f"Period: {ret.index[0].date()} → {ret.index[-1].date()}")
 
-    nlp_panel = build_nlp_signal(tickers, close, ret, save=True)
+    nlp_panel = build_nlp_signal(
+        tickers, close, ret, save=True, universe_name=universe_name
+    )
 
     if nlp_panel.empty:
         print("NLP panel is empty — check transcript fetching.")
@@ -566,11 +593,16 @@ if __name__ == "__main__":
                 continue
             res = evaluate_signal_ic(
                 nlp_panel[[sig_col]], sig_col, ret,
-                fwd_days=10, label=label
+                fwd_days=args.fwd_days, label=label
             )
             results.append(res)
 
+        if universe_name == "semi_core":
+            ic_out = "results/nlp_ic.csv"
+        else:
+            ic_out = f"results/nlp_ic_{universe_name}.csv"
+
         ic_df = pd.DataFrame(results).set_index("signal")
-        ic_df.to_csv("results/nlp_ic.csv")
-        print("\n✓ Saved results/nlp_ic.csv")
+        ic_df.to_csv(ic_out)
+        print(f"\n✓ Saved {ic_out}")
         print(ic_df.to_string())
