@@ -180,14 +180,15 @@ def _available_signals(panel: pd.DataFrame) -> list[str]:
 
 
 def run_signal_combiner(
-    panel:        pd.DataFrame,
-    train_days:   int   = TRAIN_DAYS,
-    test_days:    int   = TEST_DAYS,
-    step_days:    int   = STEP_DAYS,
-    n_estimators: int   = 100,
-    max_depth:    int   = 2,
+    panel:         pd.DataFrame,
+    universe_name: str   = "semi_core",
+    train_days:    int   = TRAIN_DAYS,
+    test_days:     int   = TEST_DAYS,
+    step_days:     int   = STEP_DAYS,
+    n_estimators:  int   = 100,
+    max_depth:     int   = 2,
     learning_rate: float = 0.05,
-    verbose:      bool  = True,
+    verbose:       bool  = True,
 ) -> dict:
     """
     Walk-forward GBM signal combiner over IC-positive base signals.
@@ -195,9 +196,17 @@ def run_signal_combiner(
     The model learns to combine base signals into a composite rank score.
     Evaluated OOS with IC / RankIC / ICIR.
 
+    When fewer than 2 IC-positive signals are available this function returns
+    gracefully with ``status='skipped'`` (0 signals) or
+    ``status='single_signal_passthrough'`` (exactly 1 signal) instead of
+    raising a ``ValueError``.  The caller / ``__main__`` block handles each
+    status appropriately so the full pipeline never crashes on a valid
+    low-signal research outcome.
+
     Parameters
     ----------
     panel         : Combined feature panel from build_combined_panel().
+    universe_name : Universe identifier used in log messages.
     train_days    : Number of trading days per training window.
     test_days     : Number of trading days per test window.
     step_days     : Roll-forward step size.
@@ -217,12 +226,38 @@ def run_signal_combiner(
       'target_df'    : Wide-format OOS targets (raw rank).
     """
     signal_cols = _available_signals(panel)
-    if len(signal_cols) < 2:
-        raise ValueError(
-            f"Need at least 2 base signals in panel.  "
-            f"Available: {list(panel.columns)}.  "
-            f"Expected one of: {BASE_SIGNALS}"
+
+    # ── Graceful degradation when too few IC-positive signals exist ───────────
+    if len(signal_cols) == 0:
+        msg = (
+            f"[WARN] No IC-positive signals found for universe='{universe_name}'. "
+            "Signal combiner requires at least 2 base signals; skipping training."
         )
+        print(msg)
+        return {
+            "status":          "skipped",
+            "reason":          "insufficient_base_signals",
+            "universe":        universe_name,
+            "base_signals":    signal_cols,
+            "n_base_signals":  0,
+        }
+
+    if len(signal_cols) == 1:
+        sig = signal_cols[0]
+        print(
+            f"[WARN] Only one IC-positive signal '{sig}' found for "
+            f"universe='{universe_name}'. "
+            "Signal combiner requires at least 2 base signals; "
+            "returning the single signal as a pass-through (no GBM trained)."
+        )
+        return {
+            "status":          "single_signal_passthrough",
+            "reason":          "only_one_base_signal",
+            "universe":        universe_name,
+            "base_signals":    signal_cols,
+            "n_base_signals":  1,
+            "passthrough_signal": sig,
+        }
 
     if verbose:
         print("\nRunning Signal Combiner (GBM meta-model)")
@@ -585,11 +620,34 @@ if __name__ == "__main__":
     print(f"\n  Training combiner with IC-positive signals: {BASE_SIGNALS}")
 
     # ── Run signal combiner ───────────────────────────────────────────────────
-    result = run_signal_combiner(combined, verbose=True)
+    result = run_signal_combiner(combined, universe_name=universe_name,
+                                 verbose=True)
 
     # Restore original list
     BASE_SIGNALS.clear()
     BASE_SIGNALS.extend(original_base_signals)
+
+    # ── Handle graceful-skip statuses — no output files, no crash ────────────
+    if result.get("status") in ("skipped", "single_signal_passthrough"):
+        print(
+            f"\n[INFO] Signal combiner exited early: "
+            f"status={result['status']!r}, "
+            f"reason={result.get('reason')!r}, "
+            f"base_signals={result.get('base_signals')}"
+        )
+        if result["status"] == "single_signal_passthrough":
+            print(
+                f"[INFO] Pass-through signal '{result['passthrough_signal']}' "
+                "is available in the combined panel but GBM was not trained. "
+                "Collect at least one more IC-positive signal to enable combiner."
+            )
+        else:
+            print(
+                "[INFO] No IC-positive signals available. "
+                "Feature set needs fundamental rethink "
+                "(earnings quality, analyst coverage, sector-relative features)."
+            )
+        sys.exit(0)
 
     # ── Save results ──────────────────────────────────────────────────────────
     result["ic_series"].to_csv(

@@ -36,7 +36,7 @@ DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 
 START = '2020-01-01'
-END   = '2026-02-22'
+END   = '2026-02-26'
 
 # ── Minimum fraction of trading days a ticker must have ──────────────────────
 MIN_COVERAGE = 0.90
