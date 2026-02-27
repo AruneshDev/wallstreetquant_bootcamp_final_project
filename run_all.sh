@@ -7,8 +7,8 @@ cd semiconductor_quant_research
 # Activate venv
 source .venv/bin/activate
 
-echo "=== 1. Data download (all universes) ==="
-python -c "from src.data_loader import download_all_universes; download_all_universes()"
+# echo "=== 1. Data download (all universes) ==="
+# python -c "from src.data_loader import download_all_universes; download_all_universes()"
 
 echo "=== 2. Base features (semi_core) ==="
 python src/features.py
@@ -36,6 +36,8 @@ python src/model_gnn.py
 
 echo "=== 10. Signal combiner (GBM meta-model) ==="
 python src/model_signal_combiner.py
+
 echo "=== 11. UI Dashboard ==="
-python -m streamlit run app.py
+python -m streamlit run app.py  # blocks here
+
 echo "=== DONE ==="
